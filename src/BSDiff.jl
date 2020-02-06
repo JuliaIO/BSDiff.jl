@@ -149,47 +149,33 @@ function write_diff(
     end
 end
 
-function apply_patch(io::IO, old::ByteVector, new::ByteVector)
-    oldsize, newsize = length(old), length(new)
-    oldpos = newpos = 0
+function apply_patch(old::ByteVector, patch::IO, new::IO)
     try
-        while newpos < newsize
+        pos = 0
+        while !eof(patch)
             # inverse of n_out above
             n_in(x::Int64) = Int(ifelse(x == abs(x), x, typemin(x) + abs(x)))
 
             # read control data
-            ctrl₀ = n_in(read(io, Int64))
-            ctrl₁ = n_in(read(io, Int64))
-            ctrl₂ = n_in(read(io, Int64))
+            diff_size = n_in(read(patch, Int64))
+            copy_size = n_in(read(patch, Int64))
+            skip_size = n_in(read(patch, Int64))
 
-            # bounds check
-            0 ≤ newpos + ctrl₀ ≤ newsize ||
-                error("corrupt patch (out of bounds index into new data)")
+            # copy data from old to new, applying diff
+            for i = 1:diff_size
+                write(new, old[pos + i] + read(patch, UInt8))
+            end
+            pos += diff_size
 
-            # read diff data
-            read!(io, @view(new[newpos .+ (1:ctrl₀)]))
-
-            # add old data to diff values
-            new[newpos .+ (1:ctrl₀)] .+= old[oldpos .+ (1:ctrl₀)]
-
-            # bump buffer offsets
-            newpos += ctrl₀
-            oldpos += ctrl₀
-
-            # bounds check
-            0 ≤ newpos + ctrl₁ ≤ newsize ||
-                error("corrupt patch (out of bounds index into new data)")
-
-            # read new data
-            read!(io, @view(new[newpos .+ (1:ctrl₁)]))
-
-            # bump buffer offsets
-            newpos += ctrl₁
-            oldpos += ctrl₂
+            # copy fresh data from patch to new
+            for i = 1:copy_size
+                write(new, read(patch, UInt8))
+            end
+            pos += skip_size
         end
-    catch err
-        err isa EOFError || rethrow()
-        error("corrupt patch (premature end of patch)")
+    catch
+        @warn "corrupt bsdiff patch"
+        rethrow()
     end
 end
 

@@ -15,10 +15,11 @@ const test_data = artifact"test_data"
             BSDiff.write_diff(io, old, new)
         end |> codeunits
         @test read(ref) == diff
-        # test that patching before reproduces
-        new′ = Vector{UInt8}(undef, length(new))
-        open(ref) do io
-            BSDiff.apply_patch(io, old, new′)
+        # test that applying patch to old produces new
+        new′ = open(ref) do patch
+            sprint() do out
+                BSDiff.apply_patch(old, patch, out)
+            end |> codeunits
         end
         @test new == new′
     end
