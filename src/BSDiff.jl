@@ -149,34 +149,40 @@ function write_diff(
     end
 end
 
-function apply_patch(old::ByteVector, patch::IO, new::IO)
-    try
-        pos = 0
-        while !eof(patch)
-            # inverse of n_out above
-            n_in(x::Int64) = Int(ifelse(x == abs(x), x, typemin(x) + abs(x)))
+"""
+Apply a patch stream to the `old` data buffer, emitting a `new` data stream.
+"""
+function apply_patch(old::ByteVector, patch::IO, new::IO, new_size::Int = typemax(Int))
+    old_size = length(old)
+    n = pos = 0
+    while !eof(patch)
+        # inverse of n_out above
+        n_in(x::Int64) = Int(ifelse(x == abs(x), x, typemin(x) + abs(x)))
 
-            # read control data
-            diff_size = n_in(read(patch, Int64))
-            copy_size = n_in(read(patch, Int64))
-            skip_size = n_in(read(patch, Int64))
+        # read control data
+        diff_size = n_in(read(patch, Int64))
+        copy_size = n_in(read(patch, Int64))
+        skip_size = n_in(read(patch, Int64))
 
-            # copy data from old to new, applying diff
-            for i = 1:diff_size
-                write(new, old[pos + i] + read(patch, UInt8))
-            end
-            pos += diff_size
+        # sanity checks
+        0 ≤ diff_size && 0 ≤ copy_size &&        # block sizes are non-negative
+        n + diff_size + copy_size ≤ new_size &&  # don't write > new_size bytes
+        0 ≤ pos && pos + diff_size ≤ old_size || # bounds check for old data
+            error("corrupt bsdiff patch")
 
-            # copy fresh data from patch to new
-            for i = 1:copy_size
-                write(new, read(patch, UInt8))
-            end
-            pos += skip_size
+        # copy data from old to new, applying diff
+        @inbounds for i = 1:diff_size
+            n += write(new, old[pos + i] + read(patch, UInt8))
         end
-    catch
-        @warn "corrupt bsdiff patch"
-        rethrow()
+        pos += diff_size
+
+        # copy fresh data from patch to new
+        for i = 1:copy_size
+            n += write(new, read(patch, UInt8))
+        end
+        pos += skip_size
     end
+    return n
 end
 
 end # module

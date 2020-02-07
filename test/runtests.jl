@@ -18,7 +18,7 @@ const test_data = artifact"test_data"
         # test that applying patch to old produces new
         new′ = open(ref) do patch
             sprint() do out
-                BSDiff.apply_patch(old, patch, out)
+                BSDiff.apply_patch(old, patch, out, length(new))
             end |> codeunits
         end
         @test new == new′
