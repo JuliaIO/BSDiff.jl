@@ -1,8 +1,97 @@
 module BSDiff
 
-import SuffixArrays: suffixsort
+export bsdiff, bspatch
+
+using SuffixArrays: suffixsort
+using TranscodingStreams, CodecBzip2
 
 const ByteVector = AbstractVector{UInt8}
+const IOorString = Union{IO, AbstractString}
+
+## high-level API (similar to the C tool) ##
+
+const HEADER = "ENDSLEY/BSDIFF43"
+
+function bsdiff(old::IO, new::IO, patch::IO)
+    old_data = read(old)
+    new_data = read(new)
+    write(patch, HEADER)
+    write(patch, int_io(Int64(length(new_data))))
+    io = TranscodingStream(Bzip2Compressor(), patch)
+    write_diff(io, old_data, new_data)
+    close(io)
+    return patch
+end
+
+# allow any subset of arguments to be strings or IO objects
+bsdiff(old::AbstractString, new::IOorString, patch::IOorString) =
+    open(old->bsdiff(old, new, patch), old)
+bsdiff(old::IO, new::AbstractString, patch::IOorString) =
+    open(new->bsdiff(old, new, patch), new)
+
+function bsdiff(old::IO, new::IO, patch::AbstractString)
+    try open(patch->bsdiff(old, new, patch), patch, write=true)
+    catch
+        rm(patch, force=true)
+        rethrow()
+    end
+    return patch
+end
+
+function bsdiff(old::IOorString, new::IOorString)
+    tmp, patch = mktemp()
+    try bsdiff(old, new, patch)
+    catch
+        close(patch)
+        rm(tmp, force=true)
+        rethrow()
+    end
+    close(patch)
+    return tmp
+end
+
+function bspatch(old::IO, patch::IO, new::IO)
+    hdr = String(read(patch, ncodeunits(HEADER)))
+    hdr == HEADER || error("corrupt bsdiff patch")
+    new_size = Int(int_io(read(patch, Int64)))
+    io = TranscodingStream(Bzip2Decompressor(), patch)
+    apply_patch(read(old), io, new, new_size)
+    close(io)
+    return new
+end
+
+# allow any subset of arguments to be strings or IO objects
+bspatch(old::AbstractString, patch::IOorString, new::IOorString) =
+    open(old->bspatch(old, patch, new), old)
+bspatch(old::IO, patch::AbstractString, new::IOorString) =
+    open(patch->bspatch(old, patch, new), patch)
+
+function bspatch(old::IO, patch::IO, new::AbstractString)
+    try open(new->bspatch(old, patch, new), new, write=true)
+    catch
+        rm(new, force=true)
+        rethrow()
+    end
+    return new
+end
+
+function bspatch(old::IOorString, patch::IOorString)
+    tmp, new = mktemp()
+    try bspatch(old, patch, new)
+    catch
+        close(new)
+        rm(tmp, force=true)
+        rethrow()
+    end
+    close(new)
+    return tmp
+end
+
+## implementation / low-level API ##
+
+# transform used to serialize integers to avoid lots of
+# high bytes being emitted for small negative values
+int_io(x::Signed) = ifelse(x == abs(x), x, typemin(x) - x)
 
 """
 How much of old[i:end] and new[j:end] are the same?
@@ -124,13 +213,10 @@ function write_diff(
                 lenb -= lens
             end
 
-            # don't emit lots of high bytes for negative values
-            n_out(x::Int64) = ifelse(x == abs(x), x, typemin(x) - x)
-
             # write control data
-            write(io, n_out(Int64(lenf)))
-            write(io, n_out(Int64((scan - lenb) - (lastscan + lenf))))
-            write(io, n_out(Int64((pos - lenb) - (lastpos + lenf))))
+            write(io, int_io(Int64(lenf)))
+            write(io, int_io(Int64((scan - lenb) - (lastscan + lenf))))
+            write(io, int_io(Int64((pos - lenb) - (lastpos + lenf))))
 
             # write diff data
             for i = 1:lenf # `i` is one-based here
@@ -156,13 +242,10 @@ function apply_patch(old::ByteVector, patch::IO, new::IO, new_size::Int = typema
     old_size = length(old)
     n = pos = 0
     while !eof(patch)
-        # inverse of n_out above
-        n_in(x::Int64) = Int(ifelse(x == abs(x), x, typemin(x) + abs(x)))
-
         # read control data
-        diff_size = n_in(read(patch, Int64))
-        copy_size = n_in(read(patch, Int64))
-        skip_size = n_in(read(patch, Int64))
+        diff_size = Int(int_io(read(patch, Int64)))
+        copy_size = Int(int_io(read(patch, Int64)))
+        skip_size = Int(int_io(read(patch, Int64)))
 
         # sanity checks
         0 ≤ diff_size && 0 ≤ copy_size &&        # block sizes are non-negative
