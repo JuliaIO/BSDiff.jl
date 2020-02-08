@@ -19,6 +19,7 @@ julia = "1.4"
 [extras]
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+bsdiff_jll = "820cb745-3461-5c14-98e1-21b61faceff9"
 
 [targets]
-test = ["Test", "Pkg"]
+test = ["Test", "Pkg", "bsdiff_jll"]
