@@ -28,7 +28,7 @@ const test_data = artifact"test_data"
             end
             @test new_data == new_data′
         end
-        if Sys.which("bsdiff") != nothing && Sys.which("bspatch") != nothing
+        if !Sys.iswindows() # bsdiff_jll doesn't compile on Windows
             @testset "high-level API" begin
                 # test that bspatch command accepts patches we generate
                 patch = bsdiff(old, new)
