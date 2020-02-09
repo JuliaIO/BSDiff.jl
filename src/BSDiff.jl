@@ -50,7 +50,7 @@ function bsdiff(old::IOorString, new::IOorString)
     return tmp
 end
 
-function bspatch(old::IO, patch::IO, new::IO)
+function bspatch(old::IO, new::IO, patch::IO)
     hdr = String(read(patch, ncodeunits(HEADER)))
     hdr == HEADER || error("corrupt bsdiff patch")
     new_size = Int(int_io(read(patch, Int64)))
@@ -61,13 +61,13 @@ function bspatch(old::IO, patch::IO, new::IO)
 end
 
 # allow any subset of arguments to be strings or IO objects
-bspatch(old::AbstractString, patch::IOorString, new::IOorString) =
-    open(old->bspatch(old, patch, new), old)
-bspatch(old::IO, patch::AbstractString, new::IOorString) =
-    open(patch->bspatch(old, patch, new), patch)
+bspatch(old::AbstractString, new::IOorString, patch::IOorString) =
+    open(old->bspatch(old, new, patch), old)
+bspatch(old::IO, new::IOorString, patch::AbstractString) =
+    open(patch->bspatch(old, new, patch), patch)
 
-function bspatch(old::IO, patch::IO, new::AbstractString)
-    try open(new->bspatch(old, patch, new), new, write=true)
+function bspatch(old::IO, new::AbstractString, patch::IO)
+    try open(new->bspatch(old, new, patch), new, write=true)
     catch
         rm(new, force=true)
         rethrow()
@@ -77,7 +77,7 @@ end
 
 function bspatch(old::IOorString, patch::IOorString)
     tmp, new = mktemp()
-    try bspatch(old, patch, new)
+    try bspatch(old, new, patch)
     catch
         close(new)
         rm(tmp, force=true)
