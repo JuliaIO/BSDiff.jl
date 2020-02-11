@@ -5,9 +5,6 @@ export bsdiff, bspatch
 using SuffixArrays: suffixsort
 using TranscodingStreams, CodecBzip2
 
-const ByteVector = AbstractVector{UInt8}
-const IOorString = Union{IO, AbstractString}
-
 const HEADER = "ENDSLEY/BSDIFF43"
 
 ## high-level API (similar to the C tool) ##
@@ -53,8 +50,8 @@ end
 # common code for API entry points
 
 function bsdiff_core(
-    old_data::ByteVector,
-    new_data::ByteVector,
+    old_data::AbstractVector{UInt8},
+    new_data::AbstractVector{UInt8},
     patch::AbstractString,
     patch_io::IO,
 )
@@ -74,7 +71,7 @@ function bsdiff_core(
 end
 
 function bspatch_core(
-    old_data::ByteVector,
+    old_data::AbstractVector{UInt8},
     new::AbstractString,
     new_io::IO,
     patch_io::IO,
@@ -105,8 +102,8 @@ int_io(x::Signed) = ifelse(x == abs(x), x, typemin(x) - x)
 How much of old[i:end] and new[j:end] are the same?
 """
 function match_length(
-    old::ByteVector, i::Integer,
-    new::ByteVector, j::Integer,
+    old::AbstractVector{UInt8}, i::Integer,
+    new::AbstractVector{UInt8}, j::Integer,
 )
     l = 0
     while i ≤ length(old) && j ≤ length(new)
@@ -122,8 +119,8 @@ Uses the suffix array of old to search efficiently.
 """
 function prefix_search(
     suffixes::Vector{<:Integer}, # suffix array of old data (0-based)
-    old::ByteVector, # old data to search in
-    new::ByteVector, # new data to search for
+    old::AbstractVector{UInt8}, # old data to search in
+    new::AbstractVector{UInt8}, # new data to search for
     ind::Int, # search for longest match of new[ind:end]
 )
     old_n = length(old)
@@ -246,7 +243,12 @@ end
 """
 Apply a patch stream to the `old` data buffer, emitting a `new` data stream.
 """
-function apply_patch(old::ByteVector, patch::IO, new::IO, new_size::Int = typemax(Int))
+function apply_patch(
+    old::AbstractVector{UInt8},
+    patch::IO,
+    new::IO,
+    new_size::Int = typemax(Int),
+)
     old_size = length(old)
     n = pos = 0
     while !eof(patch)
