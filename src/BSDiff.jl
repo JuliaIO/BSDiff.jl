@@ -8,86 +8,94 @@ using TranscodingStreams, CodecBzip2
 const ByteVector = AbstractVector{UInt8}
 const IOorString = Union{IO, AbstractString}
 
-## high-level API (similar to the C tool) ##
-
 const HEADER = "ENDSLEY/BSDIFF43"
 
-function bsdiff(old::IO, new::IO, patch::IO)
-    old_data = read(old)
-    new_data = read(new)
-    write(patch, HEADER)
-    write(patch, int_io(Int64(length(new_data))))
-    io = TranscodingStream(Bzip2Compressor(), patch)
-    write_diff(io, old_data, new_data)
-    close(io)
-    return patch
+## high-level API (similar to the C tool) ##
+
+"""
+    bsdiff(old, new, [ patch ]) -> patch
+
+Compute a binary patch that will transform the file `old` into the file `new`.
+All arguments are strings. If no path is passed for `patch` the patch data is
+written to a temporary file whose path is returned.
+"""
+function bsdiff(old::AbstractString, new::AbstractString, patch::AbstractString)
+    bsdiff_core(read(old), read(new), patch, open(patch, write=true))
 end
 
-# allow any subset of arguments to be strings or IO objects
-bsdiff(old::AbstractString, new::IOorString, patch::IOorString) =
-    open(old->bsdiff(old, new, patch), old)
-bsdiff(old::IO, new::AbstractString, patch::IOorString) =
-    open(new->bsdiff(old, new, patch), new)
+function bsdiff(old::AbstractString, new::AbstractString)
+    bsdiff_core(read(old), read(new), mktemp()...)
+end
 
-function bsdiff(old::IO, new::IO, patch::AbstractString)
-    try open(patch->bsdiff(old, new, patch), patch, write=true)
+"""
+    bspatch(old, [ new, ] patch) -> new
+
+Apply a binary patch in file `patch` to the file `old` producing file `new`.
+All arguments are strings. If no path is passed for `new` the new data is
+written to a temporary file whose path is returned.
+
+Note that the optional argument is the middle argument, which is a bit unusual
+in a Julia API, but which allows the argument order when passing all three paths
+to be the same as the `bspatch` command.
+"""
+function bspatch(old::AbstractString, new::AbstractString, patch::AbstractString)
+    open(patch) do patch_io
+        bspatch_core(read(old), new, open(new, write=true), patch_io)
+    end
+end
+
+function bspatch(old::AbstractString, patch::AbstractString)
+    open(patch) do patch_io
+        bspatch_core(read(old), mktemp()..., patch_io)
+    end
+end
+
+# common code for API entry points
+
+function bsdiff_core(
+    old_data::ByteVector,
+    new_data::ByteVector,
+    patch::AbstractString,
+    patch_io::IO,
+)
+    try
+        write(patch_io, HEADER)
+        write(patch_io, int_io(Int64(length(new_data))))
+        io = TranscodingStream(Bzip2Compressor(), patch_io)
+        write_diff(io, old_data, new_data)
+        close(io)
     catch
+        close(patch_io)
         rm(patch, force=true)
         rethrow()
     end
+    close(patch_io)
     return patch
 end
 
-function bsdiff(old::IOorString, new::IOorString)
-    tmp, patch = mktemp()
-    try bsdiff(old, new, patch)
+function bspatch_core(
+    old_data::ByteVector,
+    new::AbstractString,
+    new_io::IO,
+    patch_io::IO,
+)
+    try
+        hdr = String(read(patch_io, ncodeunits(HEADER)))
+        hdr == HEADER || error("corrupt bsdiff patch")
+        new_size = Int(int_io(read(patch_io, Int64)))
+        io = TranscodingStream(Bzip2Decompressor(), patch_io)
+        apply_patch(old_data, io, new_io, new_size)
+        close(io)
     catch
-        close(patch)
-        rm(tmp, force=true)
-        rethrow()
-    end
-    close(patch)
-    return tmp
-end
-
-function bspatch(old::IO, new::IO, patch::IO)
-    hdr = String(read(patch, ncodeunits(HEADER)))
-    hdr == HEADER || error("corrupt bsdiff patch")
-    new_size = Int(int_io(read(patch, Int64)))
-    io = TranscodingStream(Bzip2Decompressor(), patch)
-    apply_patch(read(old), io, new, new_size)
-    close(io)
-    return new
-end
-
-# allow any subset of arguments to be strings or IO objects
-bspatch(old::AbstractString, new::IOorString, patch::IOorString) =
-    open(old->bspatch(old, new, patch), old)
-bspatch(old::IO, new::IOorString, patch::AbstractString) =
-    open(patch->bspatch(old, new, patch), patch)
-
-function bspatch(old::IO, new::AbstractString, patch::IO)
-    try open(new->bspatch(old, new, patch), new, write=true)
-    catch
+        close(new_io)
         rm(new, force=true)
         rethrow()
     end
+    close(new_io)
     return new
 end
 
-function bspatch(old::IOorString, patch::IOorString)
-    tmp, new = mktemp()
-    try bspatch(old, new, patch)
-    catch
-        close(new)
-        rm(tmp, force=true)
-        rethrow()
-    end
-    close(new)
-    return tmp
-end
-
-## implementation / low-level API ##
+## internal implementation logic ##
 
 # transform used to serialize integers to avoid lots of
 # high bytes being emitted for small negative values
