@@ -7,6 +7,29 @@ import bsdiff_jll
 const test_data = artifact"test_data"
 
 @testset "BSDiff" begin
+    @testset "API coverage" begin
+        # create new, old and reference patch files
+        dir = mktempdir()
+        old_file = joinpath(dir, "old")
+        new_file = joinpath(dir, "new")
+        write(old_file, "Goodbye, world.")
+        write(new_file, "Hello, world!")
+        # check API passing only two paths
+        @testset "2-arg API" begin
+            patch_file = bsdiff(old_file, new_file)
+            new_file′ = bspatch(old_file, patch_file)
+            @test read(new_file′, String) == "Hello, world!"
+        end
+        # check API passing all three paths
+        @testset "3-arg API" begin
+            patch_file = joinpath(dir, "patch")
+            new_file′ = joinpath(dir, "new′")
+            bsdiff(old_file, new_file, patch_file)
+            bspatch(old_file, new_file′, patch_file)
+            @test read(new_file′, String) == "Hello, world!"
+        end
+        rm(dir, recursive=true, force=true)
+    end
     @testset "registry data" begin
         registry_data = joinpath(test_data, "registry")
         old = joinpath(registry_data, "before.tar")
