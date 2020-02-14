@@ -113,6 +113,11 @@ function match_length(
     return l
 end
 
+@inline function strcmp(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
+    x = Base._memcmp(p, q, min(m, n))
+    x == 0 ? cmp(m, n) : sign(x)
+end
+
 """
 Search for the longest prefix of new[ind:end] in old.
 Uses the suffix array of old to search efficiently.
@@ -128,11 +133,11 @@ function prefix_search(
     old_p = pointer(old)
     new_p = pointer(new, ind)
     # invariant: longest match is in suffixes[lo:hi]
-    lo, hi = 1, length(suffixes)
+    lo, hi = 1, old_n
     while hi - lo ≥ 2
         m = (lo + hi) >>> 1
         s = suffixes[m]
-        if 0 < Base._memcmp(new_p, old_p + s, min(new_n, old_n - s))
+        if 0 < strcmp(new_p, new_n, old_p + s, old_n - s)
             lo = m
         else
             hi = m
@@ -140,7 +145,7 @@ function prefix_search(
     end
     i = suffixes[lo]+1
     m = match_length(old, i, new, ind)
-    lo == hi && return i, m
+    lo == hi && return (i, m)
     j = suffixes[hi]+1
     n = match_length(old, j, new, ind)
     m > n ? (i, m) : (j, n)
