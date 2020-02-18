@@ -3,9 +3,10 @@
 [![Build Status](https://travis-ci.org/JuliaIO/BSDiff.jl.svg?branch=master)](https://travis-ci.org/JuliaIO/BSDiff.jl)
 [![Codecov](https://codecov.io/gh/JuliaIO/BSDiff.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaIO/BSDiff.jl)
 
-The BSDiff package is a pure Julia implementation of the `bsdiff` and `bspatch`
-commands from https://github.com/mendsley/bsdiff. The public API includes two
-Julia commands with the same API as the command-line tools:
+The BSDiff package is a pure Julia implementation of Matthew
+Endsley's [version](https://github.com/mendsley/bsdiff) of the `bsdiff` tool,
+based on (but incompatible with) Colin Percival's original program. It provides
+two Julia commands with the same API as the command-line tools:
 
 ```jl
 bsdiff(old, new, [patch])
