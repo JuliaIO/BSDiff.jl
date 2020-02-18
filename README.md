@@ -5,8 +5,8 @@
 
 The BSDiff package is a pure Julia implementation of Matthew
 Endsley's [version](https://github.com/mendsley/bsdiff) of the `bsdiff` tool,
-based on (but incompatible with) Colin Percival's original program. It provides
-two Julia commands with the same API as the command-line tools:
+based on (but incompatible with) Colin Percival's [original program](http://www.daemonology.net/bsdiff/).
+It provides two Julia commands with the same API as the command-line tools:
 
 ```jl
 bsdiff(old, new, [patch])
