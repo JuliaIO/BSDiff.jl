@@ -223,18 +223,25 @@ function write_diff(
                 lenb -= lens
             end
 
+            diff_size = lenf
+            copy_size = (scan - lenb) - (lastscan + lenf)
+            skip_size = (pos - lenb) - (lastpos + lenf)
+
+            # skip if both blocks are empty
+            diff_size == copy_size == 0 && continue
+
             # write control data
-            write(io, int_io(Int64(lenf)))
-            write(io, int_io(Int64((scan - lenb) - (lastscan + lenf))))
-            write(io, int_io(Int64((pos - lenb) - (lastpos + lenf))))
+            write(io, int_io(Int64(diff_size)))
+            write(io, int_io(Int64(copy_size)))
+            write(io, int_io(Int64(skip_size)))
 
             # write diff data
-            for i = 1:lenf # `i` is one-based here
+            for i = 1:diff_size # `i` is one-based here
                 write(io, new[lastscan + i] - old[lastpos + i])
             end
 
             # write extra data
-            for i = 1:((scan - lenb) - (lastscan + lenf))
+            for i = 1:copy_size
                 write(io, new[lastscan + lenf + i])
             end
 
