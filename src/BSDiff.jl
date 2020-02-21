@@ -115,7 +115,7 @@ end
 
 @inline function strcmp(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
     x = Base._memcmp(p, q, min(m, n))
-    x == 0 ? cmp(m, n) : sign(x)
+    # x == 0 ? cmp(m, n) : sign(x)
 end
 
 """
@@ -228,7 +228,7 @@ function write_diff(
             skip_size = (pos - lenb) - (lastpos + lenf)
 
             # skip if both blocks are empty
-            diff_size == copy_size == 0 && continue
+            # diff_size == copy_size == 0 && continue
 
             # write control data
             write(io, int_io(Int64(diff_size)))

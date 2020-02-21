@@ -45,7 +45,7 @@ const test_data = artifact"test_data"
             # this test is unequal because the original bsdiff code is buggy:
             # it uses `memcmp(old, new, min(length(old), length(new)))` whereas
             # it should break memcmp ties by comparing the length of old & new
-            @test read(ref) ≠ diff
+            @test read(ref) == diff
             # test that applying reference patch to old produces new
             new_data′ = open(ref) do patch
                 sprint() do new
