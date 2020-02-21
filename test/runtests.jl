@@ -6,6 +6,60 @@ import bsdiff_jll
 
 const test_data = artifact"test_data"
 
+function zrle(data::String)
+    sprint() do io
+        io = BSDiff.ZrleIO(io)
+        write(io, codeunits(data))
+        flush(io)
+    end
+end
+
+function zrld(data::String)
+    read(BSDiff.ZrleIO(IOBuffer(data)), String)
+end
+
+function test_zrle(raw::String, enc::String)
+    @test zrle(raw) == enc
+    @test zrld(enc) == raw
+end
+
+@testset "ZRLE" begin
+    test_zrle("", "")
+    test_zrle("xyz", "xyz")
+    test_zrle("\0", "\0\0")
+    test_zrle("\0\0", "\0\1")
+    test_zrle("\0\0\0", "\0\2")
+    test_zrle("\0xyz", "\0\0xyz")
+    test_zrle("\0\0xyz", "\0\1xyz")
+    test_zrle("\0\0\0xyz", "\0\2xyz")
+    test_zrle("xyz\0", "xyz\0\0")
+    test_zrle("xyz\0\0", "xyz\0\1")
+    test_zrle("xyz\0\0\0", "xyz\0\2")
+end
+
+function rle(in::IO, out::IO)
+    eof(in) && return
+    value = read(in, UInt8)
+    count = UInt64(0)
+    while !eof(in)
+        value′ = read(in, UInt8)
+        if value′ == value
+            count += 1
+        else
+            write(out, value)
+            BSDiff.write_leb128(out, count)
+            value = value′
+            count = UInt64(0)
+        end
+    end
+    write(out, value)
+    BSDiff.write_leb128(out, count)
+    return out
+end
+
+rle(data::AbstractVector{UInt8}) =
+    take!(rle(IOBuffer(data), IOBuffer()))
+
 @testset "BSDiff" begin
     @testset "API coverage" begin
         # create new, old and reference patch files
@@ -79,6 +133,30 @@ const test_data = artifact"test_data"
                 new′ = bspatch(old, patch)
                 @test new_data == read(new′)
             end
+        end
+        @testset "zero RLE patch" begin
+            patch_file, io = mktemp()
+            io = BSDiff.ZrleIO(io)
+            BSDiff.write_diff(io, old_data, new_data)
+            close(io)
+            @test filesize(patch_file) == 89178
+            @test read(ref) == open(patch_file) do io
+                read(BSDiff.ZrleIO(io))
+            end
+        end
+        @testset "timing" begin
+            index = @time BSDiff.generate_index(old_data)
+            @time BSDiff.write_diff(devnull, old_data, new_data, index)
+            @time BSDiff.write_diff(devnull, old_data, new_data, index)
+            @time BSDiff.write_diff(devnull, old_data, new_data, index)
+        end
+        @testset "zrle + timing" begin
+            old_zrle = codeunits(zrle(String(copy(old_data))))
+            new_zrle = codeunits(zrle(String(copy(new_data))))
+            index = @time BSDiff.generate_index(old_zrle)
+            @time BSDiff.write_diff(devnull, old_zrle, new_zrle, index)
+            @time BSDiff.write_diff(devnull, old_zrle, new_zrle, index)
+            @time BSDiff.write_diff(devnull, old_zrle, new_zrle, index)
         end
     end
 end
