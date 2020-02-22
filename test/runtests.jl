@@ -38,14 +38,11 @@ const test_data = artifact"test_data"
         old_data = read(old)
         new_data = read(new)
         @testset "low-level API" begin
-            # test that diff is identical to reference bsdiff output
+            # test that diff is identical to reference diff
             diff = sprint() do io
                 BSDiff.write_diff(io, old_data, new_data)
             end |> codeunits
-            # this test is unequal because the original bsdiff code is buggy:
-            # it uses `memcmp(old, new, min(length(old), length(new)))` whereas
-            # it should break memcmp ties by comparing the length of old & new
-            @test read(ref) ≠ diff
+            @test read(ref) == diff
             # test that applying reference patch to old produces new
             new_data′ = open(ref) do patch
                 sprint() do new
