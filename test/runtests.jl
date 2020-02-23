@@ -12,6 +12,7 @@ const test_data = artifact"test_data"
         dir = mktempdir()
         old_file = joinpath(dir, "old")
         new_file = joinpath(dir, "new")
+        suffix_file = joinpath(dir, "suffixes")
         write(old_file, "Goodbye, world.")
         write(new_file, "Hello, world!")
         # check API passing only two paths
@@ -27,6 +28,15 @@ const test_data = artifact"test_data"
             bsdiff(old_file, new_file, patch_file)
             bspatch(old_file, new_file′, patch_file)
             @test read(new_file′, String) == "Hello, world!"
+        end
+        @testset "suffixsort API" begin
+            suffixsort(old_file, suffix_file)
+            patch_file = bsdiff((old_file, suffix_file), new_file)
+            new_file′ = bspatch(old_file, patch_file)
+            @test read(new_file′, String) == "Hello, world!"
+            # test that tempfile API makes the same file
+            suffix_file′ = suffixsort(old_file)
+            @test read(suffix_file) == read(suffix_file′)
         end
         rm(dir, recursive=true, force=true)
     end

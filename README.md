@@ -18,7 +18,7 @@ The `bsdiff` command computes a patch file given `old` and `new` files while the
 
 ## API
 
-The public API for the `BSDiff` package consists of the following two functions:
+The public API for the `BSDiff` package consists of the following functions:
 
 <!-- BEGIN: copied from inline doc strings -->
 
@@ -30,6 +30,13 @@ bsdiff(old, new, [ patch ]) -> patch
 Compute a binary patch that will transform the file `old` into the file `new`.
 All arguments are strings. If no path is passed for `patch` the patch data is
 written to a temporary file whose path is returned.
+
+The `old` argument can also be a tuple of two strings, in which case the first
+is used as the path to the old data and the second is used as the path to a file
+containing the sorted suffix array for the old data. Since sorting the suffix
+array is the slowest part of generating a diff, pre-computing this and reusing
+it can significantly speed up generting diffs from the same old file to multiple
+different new files.
 
 ### bspatch
 
@@ -43,6 +50,19 @@ written to a temporary file whose path is returned.
 Note that the optional argument is the middle argument, which is a bit unusual
 in a Julia API, but which allows the argument order when passing all three paths
 to be the same as the `bspatch` command.
+
+### suffixsort
+
+```julia
+suffixsort(old, [ suffix_file ]) -> suffix_file
+```
+Save the suffix array for the file `old` into the file `suffix_file`. All
+arguments are strings. If no `suffix_file` argument is given, the suffix array
+is saved to a temporary file and its path is returned.
+
+The path of the suffix file can be passed to `bsdiff` to speed up the diff
+computation (by loading the sorted suffix array rather than computing it), by
+passing `(old, suffix_file)` as the first argument instead of just `old`.
 
 <!-- END: copied from inline doc strings -->
 
