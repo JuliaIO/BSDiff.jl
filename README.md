@@ -51,10 +51,10 @@ Note that the optional argument is the middle argument, which is a bit unusual
 in a Julia API, but which allows the argument order when passing all three paths
 to be the same as the `bspatch` command.
 
-### suffixsort
+### bssort
 
 ```julia
-suffixsort(old, [ suffix_file ]) -> suffix_file
+bssort(old, [ suffix_file ]) -> suffix_file
 ```
 Save the suffix array for the file `old` into the file `suffix_file`. All
 arguments are strings. If no `suffix_file` argument is given, the suffix array
