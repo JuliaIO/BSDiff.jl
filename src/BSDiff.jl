@@ -1,13 +1,13 @@
 module BSDiff
 
-export bsdiff, bspatch
+export bsdiff, bspatch, suffixsort
 
-using SuffixArrays: suffixsort
+import SuffixArrays
 using TranscodingStreams, CodecBzip2
 
-const HEADER = "ENDSLEY/BSDIFF43"
-
 ## high-level API (similar to the C tool) ##
+
+const AbstractStrings = Union{AbstractString,NTuple{2,AbstractString}}
 
 """
     bsdiff(old, new, [ patch ]) -> patch
@@ -15,13 +15,20 @@ const HEADER = "ENDSLEY/BSDIFF43"
 Compute a binary patch that will transform the file `old` into the file `new`.
 All arguments are strings. If no path is passed for `patch` the patch data is
 written to a temporary file whose path is returned.
+
+The `old` argument can also be a tuple of two strings, in which case the first
+is used as the path to the old data and the second is used as the path to a file
+containing the sorted suffix array for the old data. Since sorting the suffix
+array is the slowest part of generating a diff, pre-computing this and reusing
+it can significantly speed up generting diffs from the same old file to multiple
+different new files.
 """
-function bsdiff(old::AbstractString, new::AbstractString, patch::AbstractString)
-    bsdiff_core(read(old), read(new), patch, open(patch, write=true))
+function bsdiff(old::AbstractStrings, new::AbstractString, patch::AbstractString)
+    bsdiff_core(data_and_suffixes(old)..., read(new), patch, open(patch, write=true))
 end
 
-function bsdiff(old::AbstractString, new::AbstractString)
-    bsdiff_core(read(old), read(new), mktemp()...)
+function bsdiff(old::AbstractStrings, new::AbstractString)
+    bsdiff_core(data_and_suffixes(old)..., read(new), mktemp()...)
 end
 
 """
@@ -47,10 +54,32 @@ function bspatch(old::AbstractString, patch::AbstractString)
     end
 end
 
+"""
+    suffixsort(old, [ suffix_file ]) -> suffix_file
+
+Save the suffix array for the file `old` into the file `suffix_file`. All
+arguments are strings. If no `suffix_file` argument is given, the suffix array
+is saved to a temporary file and its path is returned.
+
+The path of the suffix file can be passed to `bsdiff` to speed up the diff
+computation (by loading the sorted suffix array rather than computing it), by
+passing `(old, suffix_file)` as the first argument instead of just `old`.
+"""
+function suffixsort(old::AbstractString, suffix_file::AbstractString)
+    suffixsort_core(read(old), suffix_file, open(suffix_file, write=true))
+end
+
+function suffixsort(old::AbstractString)
+    suffixsort_core(read(old), mktemp()...)
+end
+
 # common code for API entry points
+
+const HEADER = "ENDSLEY/BSDIFF43"
 
 function bsdiff_core(
     old_data::AbstractVector{UInt8},
+    suffixes::Vector{<:Integer},
     new_data::AbstractVector{UInt8},
     patch::AbstractString,
     patch_io::IO,
@@ -59,7 +88,7 @@ function bsdiff_core(
         write(patch_io, HEADER)
         write(patch_io, int_io(Int64(length(new_data))))
         io = TranscodingStream(Bzip2Compressor(), patch_io)
-        write_diff(io, old_data, new_data)
+        write_diff(io, old_data, new_data, suffixes)
         close(io)
     catch
         close(patch_io)
@@ -90,6 +119,42 @@ function bspatch_core(
     end
     close(new_io)
     return new
+end
+
+function suffixsort_core(
+    old_data::AbstractVector{UInt8},
+    suffix_file::AbstractString,
+    suffix_io::IO,
+)
+    try
+        suffixes = SuffixArrays.suffixsort(old_data, 0)
+        write(suffix_io, suffixes)
+    catch
+        close(suffix_io)
+        rm(suffix_file, force=true)
+        rethrow()
+    end
+    close(suffix_io)
+    return suffix_file
+end
+
+## loading data and suffixes ##
+
+function data_and_suffixes(data_path::AbstractString)
+    data = read(data_path)
+    data, SuffixArrays.suffixsort(data, 0)
+end
+
+function data_and_suffixes((data_path, suffix_path)::NTuple{2,AbstractString})
+    data = read(data_path)
+    size = filesize(suffix_path)
+    unit = size/length(data)
+    T = unit == 1 ? UInt8 :
+        unit == 2 ? UInt16 :
+        unit == 4 ? UInt32 :
+        unit == 8 ? UInt64 :
+        error("invalid index type size for suffix file: $unit")
+    return data, read!(suffix_path, Vector{T}(undef, round(Int, size/unit)))
 end
 
 ## internal implementation logic ##
@@ -159,7 +224,7 @@ function write_diff(
     io::IO,
     old::AbstractVector{UInt8},
     new::AbstractVector{UInt8},
-    suffixes::Vector{<:Integer} = suffixsort(old, 0),
+    suffixes::Vector{<:Integer} = SuffixArrays.suffixsort(old, 0),
 )
     oldsize, newsize = length(old), length(new)
     scan = len = pos = lastscan = lastpos = lastoffset = 0
