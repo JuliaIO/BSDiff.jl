@@ -29,13 +29,13 @@ const test_data = artifact"test_data"
             bspatch(old_file, new_file′, patch_file)
             @test read(new_file′, String) == "Hello, world!"
         end
-        @testset "bssort API" begin
-            bssort(old_file, suffix_file)
+        @testset "bsindex API" begin
+            bsindex(old_file, suffix_file)
             patch_file = bsdiff((old_file, suffix_file), new_file)
             new_file′ = bspatch(old_file, patch_file)
             @test read(new_file′, String) == "Hello, world!"
             # test that tempfile API makes the same file
-            suffix_file′ = bssort(old_file)
+            suffix_file′ = bsindex(old_file)
             @test read(suffix_file) == read(suffix_file′)
         end
         rm(dir, recursive=true, force=true)

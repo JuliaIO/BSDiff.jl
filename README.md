@@ -51,18 +51,16 @@ Note that the optional argument is the middle argument, which is a bit unusual
 in a Julia API, but which allows the argument order when passing all three paths
 to be the same as the `bspatch` command.
 
-### bssort
+### bsindex
 
 ```julia
-bssort(old, [ suffix_file ]) -> suffix_file
+bsindex(old, [ index ]) -> index
 ```
-Save the suffix array for the file `old` into the file `suffix_file`. All
-arguments are strings. If no `suffix_file` argument is given, the suffix array
-is saved to a temporary file and its path is returned.
-
-The path of the suffix file can be passed to `bsdiff` to speed up the diff
-computation (by loading the sorted suffix array rather than computing it), by
-passing `(old, suffix_file)` as the first argument instead of just `old`.
+Save index data (currently a sorted suffix array) for the file `old` into the
+file `index`. All arguments are strings. If no `index` argument is given, the
+index data is saved to a temporary file whose path is returned. The path of the
+index file can be passed to `bsdiff` to speed up the diff computation by passing
+`(old, index)` as the first argument instead of just `old`.
 
 <!-- END: copied from inline doc strings -->
 
