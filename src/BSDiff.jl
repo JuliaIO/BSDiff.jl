@@ -1,6 +1,6 @@
 module BSDiff
 
-export bsdiff, bspatch, bssort
+export bsdiff, bspatch, bsindex
 
 using SuffixArrays
 using TranscodingStreams, CodecBzip2
@@ -55,27 +55,26 @@ function bspatch(old::AbstractString, patch::AbstractString)
 end
 
 """
-    bssort(old, [ suffix_file ]) -> suffix_file
+    bsindex(old, [ index ]) -> index
 
-Save the suffix array for the file `old` into the file `suffix_file`. All
-arguments are strings. If no `suffix_file` argument is given, the suffix array
-is saved to a temporary file and its path is returned.
-
-The path of the suffix file can be passed to `bsdiff` to speed up the diff
-computation (by loading the sorted suffix array rather than computing it), by
-passing `(old, suffix_file)` as the first argument instead of just `old`.
+Save index data (currently a sorted suffix array) for the file `old` into the
+file `index`. All arguments are strings. If no `index` argument is given, the
+index data is saved to a temporary file whose path is returned. The path of the
+index file can be passed to `bsdiff` to speed up the diff computation by passing
+`(old, index)` as the first argument instead of just `old`.
 """
-function bssort(old::AbstractString, suffix_file::AbstractString)
-    suffixsort_core(read(old), suffix_file, open(suffix_file, write=true))
+function bsindex(old::AbstractString, index::AbstractString)
+    bsindex_core(read(old), index, open(index, write=true))
 end
 
-function bssort(old::AbstractString)
-    suffixsort_core(read(old), mktemp()...)
+function bsindex(old::AbstractString)
+    bsindex_core(read(old), mktemp()...)
 end
 
 # common code for API entry points
 
-const HEADER = "ENDSLEY/BSDIFF43"
+const PATCH_HEADER = "ENDSLEY/BSDIFF43"
+const INDEX_HEADER = "SUFFIX ARRAY\0"
 
 function bsdiff_core(
     old_data::AbstractVector{UInt8},
@@ -85,7 +84,7 @@ function bsdiff_core(
     patch_io::IO,
 )
     try
-        write(patch_io, HEADER)
+        write(patch_io, PATCH_HEADER)
         write(patch_io, int_io(Int64(length(new_data))))
         io = TranscodingStream(Bzip2Compressor(), patch_io)
         write_diff(io, old_data, new_data, suffixes)
@@ -106,8 +105,8 @@ function bspatch_core(
     patch_io::IO,
 )
     try
-        hdr = String(read(patch_io, ncodeunits(HEADER)))
-        hdr == HEADER || error("corrupt bsdiff patch")
+        hdr = String(read(patch_io, ncodeunits(PATCH_HEADER)))
+        hdr == PATCH_HEADER || error("corrupt bsdiff patch")
         new_size = Int(int_io(read(patch_io, Int64)))
         io = TranscodingStream(Bzip2Decompressor(), patch_io)
         apply_patch(old_data, io, new_io, new_size)
@@ -121,21 +120,23 @@ function bspatch_core(
     return new
 end
 
-function suffixsort_core(
+function bsindex_core(
     old_data::AbstractVector{UInt8},
-    suffix_file::AbstractString,
-    suffix_io::IO,
+    index::AbstractString,
+    index_io::IO,
 )
     try
+        write(index_io, INDEX_HEADER)
         suffixes = suffixsort(old_data, 0)
-        write(suffix_io, suffixes)
+        write(index_io, UInt8(sizeof(eltype(suffixes))))
+        write(index_io, suffixes)
     catch
-        close(suffix_io)
-        rm(suffix_file, force=true)
+        close(index_io)
+        rm(index, force=true)
         rethrow()
     end
-    close(suffix_io)
-    return suffix_file
+    close(index_io)
+    return index
 end
 
 ## loading data and suffixes ##
@@ -145,16 +146,20 @@ function data_and_suffixes(data_path::AbstractString)
     data, suffixsort(data, 0)
 end
 
-function data_and_suffixes((data_path, suffix_path)::NTuple{2,AbstractString})
+function data_and_suffixes((data_path, index_path)::NTuple{2,AbstractString})
     data = read(data_path)
-    size = filesize(suffix_path)
-    unit = size/length(data)
-    T = unit == 1 ? UInt8 :
-        unit == 2 ? UInt16 :
-        unit == 4 ? UInt32 :
-        unit == 8 ? UInt64 :
-        error("invalid index type size for suffix file: $unit")
-    return data, read!(suffix_path, Vector{T}(undef, round(Int, size/unit)))
+    suffixes = open(index_path) do index_io
+        hdr = String(read(index_io, ncodeunits(INDEX_HEADER)))
+        hdr == INDEX_HEADER || error("corrupt bsdiff index")
+        unit = Int(read(index_io, UInt8))
+        T = unit == 1 ? UInt8 :
+            unit == 2 ? UInt16 :
+            unit == 4 ? UInt32 :
+            unit == 8 ? UInt64 :
+            error("invalid unit size for index file: $unit")
+        read!(index_io, Vector{T}(undef, length(data)))
+    end
+    return data, suffixes
 end
 
 ## internal implementation logic ##
