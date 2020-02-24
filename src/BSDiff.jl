@@ -74,6 +74,7 @@ end
 # common code for API entry points
 
 const PATCH_HEADER = "ENDSLEY/BSDIFF43"
+const INDEX_HEADER = "SUFFIX ARRAY\0"
 
 function bsdiff_core(
     old_data::AbstractVector{UInt8},
@@ -125,7 +126,9 @@ function bsindex_core(
     index_io::IO,
 )
     try
+        write(index_io, INDEX_HEADER)
         suffixes = suffixsort(old_data, 0)
+        write(index_io, UInt8(sizeof(eltype(suffixes))))
         write(index_io, suffixes)
     catch
         close(index_io)
@@ -143,16 +146,20 @@ function data_and_suffixes(data_path::AbstractString)
     data, suffixsort(data, 0)
 end
 
-function data_and_suffixes((data_path, suffix_path)::NTuple{2,AbstractString})
+function data_and_suffixes((data_path, index_path)::NTuple{2,AbstractString})
     data = read(data_path)
-    size = filesize(suffix_path)
-    unit = size/length(data)
-    T = unit == 1 ? UInt8 :
-        unit == 2 ? UInt16 :
-        unit == 4 ? UInt32 :
-        unit == 8 ? UInt64 :
-        error("invalid unit size for suffix file: $unit")
-    return data, read!(suffix_path, Vector{T}(undef, round(Int, size/unit)))
+    suffixes = open(index_path) do index_io
+        hdr = String(read(index_io, ncodeunits(INDEX_HEADER)))
+        hdr == INDEX_HEADER || error("corrupt bsdiff index")
+        unit = Int(read(index_io, UInt8))
+        T = unit == 1 ? UInt8 :
+            unit == 2 ? UInt16 :
+            unit == 4 ? UInt32 :
+            unit == 8 ? UInt64 :
+            error("invalid unit size for index file: $unit")
+        read!(index_io, Vector{T}(undef, length(data)))
+    end
+    return data, suffixes
 end
 
 ## internal implementation logic ##
