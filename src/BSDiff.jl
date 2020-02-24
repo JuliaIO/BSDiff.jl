@@ -1,8 +1,8 @@
 module BSDiff
 
-export bsdiff, bspatch, suffixsort
+export bsdiff, bspatch, bssort
 
-import SuffixArrays
+using SuffixArrays
 using TranscodingStreams, CodecBzip2
 
 ## high-level API (similar to the C tool) ##
@@ -55,7 +55,7 @@ function bspatch(old::AbstractString, patch::AbstractString)
 end
 
 """
-    suffixsort(old, [ suffix_file ]) -> suffix_file
+    bssort(old, [ suffix_file ]) -> suffix_file
 
 Save the suffix array for the file `old` into the file `suffix_file`. All
 arguments are strings. If no `suffix_file` argument is given, the suffix array
@@ -65,11 +65,11 @@ The path of the suffix file can be passed to `bsdiff` to speed up the diff
 computation (by loading the sorted suffix array rather than computing it), by
 passing `(old, suffix_file)` as the first argument instead of just `old`.
 """
-function suffixsort(old::AbstractString, suffix_file::AbstractString)
+function bssort(old::AbstractString, suffix_file::AbstractString)
     suffixsort_core(read(old), suffix_file, open(suffix_file, write=true))
 end
 
-function suffixsort(old::AbstractString)
+function bssort(old::AbstractString)
     suffixsort_core(read(old), mktemp()...)
 end
 
@@ -127,7 +127,7 @@ function suffixsort_core(
     suffix_io::IO,
 )
     try
-        suffixes = SuffixArrays.suffixsort(old_data, 0)
+        suffixes = suffixsort(old_data, 0)
         write(suffix_io, suffixes)
     catch
         close(suffix_io)
@@ -142,7 +142,7 @@ end
 
 function data_and_suffixes(data_path::AbstractString)
     data = read(data_path)
-    data, SuffixArrays.suffixsort(data, 0)
+    data, suffixsort(data, 0)
 end
 
 function data_and_suffixes((data_path, suffix_path)::NTuple{2,AbstractString})
@@ -224,7 +224,7 @@ function write_diff(
     io::IO,
     old::AbstractVector{UInt8},
     new::AbstractVector{UInt8},
-    suffixes::Vector{<:Integer} = SuffixArrays.suffixsort(old, 0),
+    suffixes::Vector{<:Integer} = suffixsort(old, 0),
 )
     oldsize, newsize = length(old), length(new)
     scan = len = pos = lastscan = lastpos = lastoffset = 0
