@@ -57,7 +57,7 @@ end
 """
     bsindex(old, [ index ]) -> index
 
-Save index data (currently a sorted suffix array) for the file `old` into the
+Save index data (currently a suffix array & lcp data) for the file `old` into the
 file `index`. All arguments are strings. If no `index` argument is given, the
 index data is saved to a temporary file whose path is returned. The path of the
 index file can be passed to `bsdiff` to speed up the diff computation by passing
@@ -74,9 +74,9 @@ end
 # common code for API entry points
 
 const PATCH_HEADER = "ENDSLEY/BSDIFF43"
-const INDEX_HEADER = "SUFFIX ARRAY\0"
+const INDEX_HEADER = "SUFFIXES,LCP\0"
 
-IndexType{T<:Integer} = Vector{T}
+IndexType{T<:Integer} = Matrix{T}
 
 function bsdiff_core(
     old_data::AbstractVector{UInt8},
@@ -159,42 +159,55 @@ function data_and_index((data_path, index_path)::NTuple{2,AbstractString})
             unit == 4 ? UInt32 :
             unit == 8 ? UInt64 :
             error("invalid unit size for index file: $unit")
-        read!(index_io, Vector{T}(undef, length(data)))
+        read!(index_io, Matrix{T}(undef, 3, length(data)))
     end
     return data, index
 end
 
 ## internal implementation logic ##
 
-generate_index(data::AbstractVector{<:UInt8}) = suffixsort(data, 0)
+const SUFFIX = 2
+
+function generate_index(data::AbstractVector{<:UInt8})
+    n = length(data)
+    suffixes = suffixsort(data, 0)
+    index = zeros(eltype(suffixes), 3, n)
+    index[SUFFIX, :] .= suffixes
+    fill_lcp!(pointer(data), n, index, 1, n)
+    return index
+end
+
+function fill_lcp!(p::Ptr{UInt8}, n::Int, index::IndexType, lo::Int, hi::Int)
+    hi - lo ≥ 2 || return
+    mid = (lo + hi) >>> 1
+    index[SUFFIX-1, mid] = strlcp(p, n, index[SUFFIX, lo], index[SUFFIX, mid])
+    index[SUFFIX+1, mid] = strlcp(p, n, index[SUFFIX, mid], index[SUFFIX, hi])
+    fill_lcp!(p, n, index, lo, mid)
+    fill_lcp!(p, n, index, mid, hi)
+end
+
+strlcp(p::Ptr{UInt8}, n::Int, i::Integer, j::Integer) = strcmplen(p+i, n-i, p+j, n-j)[2]
 
 # transform used to serialize integers to avoid lots of
 # high bytes being emitted for small negative values
 int_io(x::Signed) = ifelse(x == abs(x), x, typemin(x) - x)
 
 """
-How much of old[i:end] and new[j:end] are the same?
+Return lexicographic order and length of common prefix.
 """
-function match_length(
-    old::AbstractVector{UInt8}, i::Integer,
-    new::AbstractVector{UInt8}, j::Integer,
-)
-    l = 0
-    while i ≤ length(old) && j ≤ length(new)
-        old[i] ≠ new[j] && break
+function strcmplen(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
+    i = j = l = x = 0
+    while i < m && j < n
+        x = cmp(unsafe_load(p+i), unsafe_load(q+j))
+        x ≠ 0 && break
         i += 1; j += 1; l += 1
     end
-    return l
-end
-
-@inline function strcmp(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
-    x = Base._memcmp(p, q, min(m, n))
-    x == 0 ? cmp(m, n) : sign(x)
+    return ifelse(x == 0, cmp(m, n), x), l
 end
 
 """
 Search for the longest prefix of new[t:end] in old.
-Uses the suffix array of old to search efficiently.
+Uses the index to search efficiently.
 """
 function prefix_search(
     index::IndexType, # suffix & lcp data
@@ -206,28 +219,40 @@ function prefix_search(
     new_n = length(new) - t + 1
     old_p = pointer(old)
     new_p = pointer(new, t)
-    # invariant: longest match is in index[lo:hi]
+    # dir < 0: searching left, lcp is on the right
+    # dir > 0: searching right, lcp is on the left
     lo, hi = 1, old_n
+    lcp_lo = strcmplen(new_p, new_n, old_p+index[SUFFIX, lo], old_n-index[SUFFIX, lo])[2]
+    lcp_hi = strcmplen(new_p, new_n, old_p+index[SUFFIX, hi], old_n-index[SUFFIX, hi])[2]
+    lcp, dir = lcp_lo > lcp_hi ? (lcp_lo, 1) : (lcp_hi, -1)
     while hi - lo ≥ 2
-        m = (lo + hi) >>> 1
-        s = index[m]
-        if 0 < strcmp(new_p, new_n, old_p + s, old_n - s)
-            lo = m
+        mid = (lo + hi) >>> 1
+        s = index[SUFFIX, mid] # suffix index (0-based)
+        c = index[SUFFIX-dir, mid] # lcp(new mid, old mid)
+        x = cmp(c, lcp)
+        if dir == 0 || x == 0
+            # need to look at more of the needle
+            dir, l = strcmplen(new_p+c, new_n-c, old_p+s+c, old_n-s-c)
+            lcp += l
+            dir == 0 && return (s+1, lcp)
+        end
+        if (dir < 0) ⊻ (x < 0)
+            hi = mid
         else
-            hi = m
+            lo = mid
         end
     end
-    i = index[lo]+1
-    m = match_length(old, i, new, t)
-    lo == hi && return (i, m)
-    j = index[hi]+1
-    n = match_length(old, j, new, t)
-    m > n ? (i, m) : (j, n)
+    i = index[SUFFIX, lo]
+    m = strcmplen(new_p, new_n, old_p+i, old_n-i)[2]
+    lo == hi && return (i+1, m)
+    j = index[SUFFIX, hi]
+    n = strcmplen(new_p, new_n, old_p+j, old_n-j)[2]
+    m > n ? (i+1, m) : (j+1, n)
 end
 
 """
 Computes and emits the diff of the byte vectors `new` versus `old`.
-The `index` array is a zero-based suffix array of `old`.
+The `index` array contains suffix array and lcp data for `old`.
 """
 function write_diff(
     io::IO,
