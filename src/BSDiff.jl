@@ -173,23 +173,17 @@ generate_index(data::AbstractVector{<:UInt8}) = suffixsort(data, 0)
 int_io(x::Signed) = ifelse(x == abs(x), x, typemin(x) - x)
 
 """
-How much of old[i:end] and new[j:end] are the same?
+Return lexicographic order and length of common prefix.
 """
-function match_length(
-    old::AbstractVector{UInt8}, i::Integer,
-    new::AbstractVector{UInt8}, j::Integer,
-)
-    l = 0
-    while i ≤ length(old) && j ≤ length(new)
-        old[i] ≠ new[j] && break
-        i += 1; j += 1; l += 1
+function strcmplen(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
+    i = 0
+    while i < min(m, n)
+        a = unsafe_load(p + i)
+        b = unsafe_load(q + i)
+        a ≠ b && return (a - b) % Int8, i
+        i += 1
     end
-    return l
-end
-
-@inline function strcmp(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
-    x = Base._memcmp(p, q, min(m, n))
-    x == 0 ? cmp(m, n) : sign(x)
+    return (m - n) % Int8, i
 end
 
 """
@@ -208,21 +202,19 @@ function prefix_search(
     new_p = pointer(new, t)
     # invariant: longest match is in index[lo:hi]
     lo, hi = 1, old_n
+    c = lo_c = hi_c = 0
     while hi - lo ≥ 2
         m = (lo + hi) >>> 1
         s = index[m]
-        if 0 < strcmp(new_p, new_n, old_p + s, old_n - s)
-            lo = m
+        x, l = strcmplen(new_p+c, new_n+c, old_p+s+c, old_n-s-c)
+        if 0 < x
+            lo, lo_c = m, c+l
         else
-            hi = m
+            hi, hi_c = m, c+l
         end
+        c = min(lo_c, hi_c)
     end
-    i = index[lo]+1
-    m = match_length(old, i, new, t)
-    lo == hi && return (i, m)
-    j = index[hi]+1
-    n = match_length(old, j, new, t)
-    m > n ? (i, m) : (j, n)
+    lo_c > hi_c ? (index[lo]+1, lo_c) : (index[hi]+1, hi_c)
 end
 
 """
