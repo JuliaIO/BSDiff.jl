@@ -80,5 +80,11 @@ const test_data = artifact"test_data"
                 @test new_data == read(new′)
             end
         end
+        @testset "timing" begin
+            index = @time BSDiff.generate_index(old_data)
+            @time BSDiff.write_diff(devnull, old_data, new_data, index)
+            @time BSDiff.write_diff(devnull, old_data, new_data, index)
+            @time BSDiff.write_diff(devnull, old_data, new_data, index)
+        end
     end
 end
