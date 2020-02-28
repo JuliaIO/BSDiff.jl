@@ -389,4 +389,79 @@ function apply_patch(
     return n
 end
 
+## IO type that run-length encodes zero bytes ##
+
+mutable struct ZrleIO{T<:IO} <: IO
+    stream::T
+    zeros::UInt64
+end
+ZrleIO(io::IO) = ZrleIO{typeof(io)}(io, 0)
+
+Base.eof(io::ZrleIO) = io.zeros == 0 && eof(io.stream)
+Base.isopen(io::ZrleIO) = isopen(io.stream)
+
+function flush_zeros(io::ZrleIO)
+    if io.zeros > 0
+        write(io.stream, 0x0)
+        write_leb128(io.stream, io.zeros-1)
+        io.zeros = 0
+    end
+end
+
+function Base.flush(io::ZrleIO)
+    flush_zeros(io)
+    flush(io.stream)
+end
+
+function Base.close(io::ZrleIO)
+    isreadonly(io.stream) || flush_zeros(io)
+    close(io.stream)
+end
+
+function Base.write(io::ZrleIO, byte::UInt8)
+    if byte == 0
+        io.zeros += 1
+    else
+        flush_zeros(io)
+        write(io.stream, byte)
+    end
+    return 1
+end
+
+function Base.read(io::ZrleIO, ::Type{UInt8})
+    if io.zeros > 0
+        io.zeros -= 1
+        return 0x0
+    end
+    byte = read(io.stream, UInt8)
+    if byte == 0
+        io.zeros = read_leb128(io.stream, typeof(io.zeros))
+    end
+    return byte
+end
+
+## variable length integer output ##
+
+function write_leb128(io::IO, n::Unsigned)
+    while true
+        byte::UInt8 = n & 0x7f
+        more = (n >>= 7) != 0
+        byte |= UInt8(more) << 7
+        write(io, byte)
+        more || break
+    end
+end
+
+function read_leb128(io::IO, ::Type{T}) where {T<:Unsigned}
+    n::T = zero(T)
+    shift = 0
+    while true
+       byte = read(io, UInt8)
+       n |= T(byte & 0x7f) << shift
+       (byte & 0x80) == 0 && break
+       shift += 7
+    end
+    return n
+end
+
 end # module
