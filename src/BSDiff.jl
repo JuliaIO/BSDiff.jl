@@ -193,19 +193,19 @@ end
 end
 
 """
-Search for the longest prefix of new[ind:end] in old.
+Search for the longest prefix of new[t:end] in old.
 Uses the suffix array of old to search efficiently.
 """
 function prefix_search(
     index::IndexType, # suffix & lcp data
     old::AbstractVector{UInt8}, # old data to search in
     new::AbstractVector{UInt8}, # new data to search for
-    ind::Int, # search for longest match of new[ind:end]
+    t::Int, # search for longest match of new[t:end]
 )
     old_n = length(old)
-    new_n = length(new) - ind + 1
+    new_n = length(new) - t + 1
     old_p = pointer(old)
-    new_p = pointer(new, ind)
+    new_p = pointer(new, t)
     # invariant: longest match is in index[lo:hi]
     lo, hi = 1, old_n
     while hi - lo ≥ 2
@@ -218,10 +218,10 @@ function prefix_search(
         end
     end
     i = index[lo]+1
-    m = match_length(old, i, new, ind)
+    m = match_length(old, i, new, t)
     lo == hi && return (i, m)
     j = index[hi]+1
-    n = match_length(old, j, new, ind)
+    n = match_length(old, j, new, t)
     m > n ? (i, m) : (j, n)
 end
 
