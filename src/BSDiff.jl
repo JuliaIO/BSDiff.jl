@@ -24,11 +24,11 @@ it can significantly speed up generting diffs from the same old file to multiple
 different new files.
 """
 function bsdiff(old::AbstractStrings, new::AbstractString, patch::AbstractString)
-    bsdiff_core(data_and_suffixes(old)..., read(new), patch, open(patch, write=true))
+    bsdiff_core(data_and_index(old)..., read(new), patch, open(patch, write=true))
 end
 
 function bsdiff(old::AbstractStrings, new::AbstractString)
-    bsdiff_core(data_and_suffixes(old)..., read(new), mktemp()...)
+    bsdiff_core(data_and_index(old)..., read(new), mktemp()...)
 end
 
 """
@@ -76,9 +76,11 @@ end
 const PATCH_HEADER = "ENDSLEY/BSDIFF43"
 const INDEX_HEADER = "SUFFIX ARRAY\0"
 
+IndexType{T<:Integer} = Vector{T}
+
 function bsdiff_core(
     old_data::AbstractVector{UInt8},
-    suffixes::Vector{<:Integer},
+    index::IndexType,
     new_data::AbstractVector{UInt8},
     patch::AbstractString,
     patch_io::IO,
@@ -87,7 +89,7 @@ function bsdiff_core(
         write(patch_io, PATCH_HEADER)
         write(patch_io, int_io(Int64(length(new_data))))
         io = TranscodingStream(Bzip2Compressor(), patch_io)
-        write_diff(io, old_data, new_data, suffixes)
+        write_diff(io, old_data, new_data, index)
         close(io)
     catch
         close(patch_io)
@@ -122,33 +124,33 @@ end
 
 function bsindex_core(
     old_data::AbstractVector{UInt8},
-    index::AbstractString,
+    index_path::AbstractString,
     index_io::IO,
 )
     try
         write(index_io, INDEX_HEADER)
-        suffixes = suffixsort(old_data, 0)
-        write(index_io, UInt8(sizeof(eltype(suffixes))))
-        write(index_io, suffixes)
+        index = generate_index(old_data)
+        write(index_io, UInt8(sizeof(eltype(index))))
+        write(index_io, index)
     catch
         close(index_io)
-        rm(index, force=true)
+        rm(index_path, force=true)
         rethrow()
     end
     close(index_io)
-    return index
+    return index_path
 end
 
-## loading data and suffixes ##
+## loading data and index ##
 
-function data_and_suffixes(data_path::AbstractString)
+function data_and_index(data_path::AbstractString)
     data = read(data_path)
-    data, suffixsort(data, 0)
+    data, generate_index(data)
 end
 
-function data_and_suffixes((data_path, index_path)::NTuple{2,AbstractString})
+function data_and_index((data_path, index_path)::NTuple{2,AbstractString})
     data = read(data_path)
-    suffixes = open(index_path) do index_io
+    index = open(index_path) do index_io
         hdr = String(read(index_io, ncodeunits(INDEX_HEADER)))
         hdr == INDEX_HEADER || error("corrupt bsdiff index")
         unit = Int(read(index_io, UInt8))
@@ -159,10 +161,12 @@ function data_and_suffixes((data_path, index_path)::NTuple{2,AbstractString})
             error("invalid unit size for index file: $unit")
         read!(index_io, Vector{T}(undef, length(data)))
     end
-    return data, suffixes
+    return data, index
 end
 
 ## internal implementation logic ##
+
+generate_index(data::AbstractVector{<:UInt8}) = suffixsort(data, 0)
 
 # transform used to serialize integers to avoid lots of
 # high bytes being emitted for small negative values
@@ -189,47 +193,47 @@ end
 end
 
 """
-Search for the longest prefix of new[ind:end] in old.
+Search for the longest prefix of new[t:end] in old.
 Uses the suffix array of old to search efficiently.
 """
 function prefix_search(
-    suffixes::Vector{<:Integer}, # suffix array of old data (0-based)
+    index::IndexType, # suffix & lcp data
     old::AbstractVector{UInt8}, # old data to search in
     new::AbstractVector{UInt8}, # new data to search for
-    ind::Int, # search for longest match of new[ind:end]
+    t::Int, # search for longest match of new[t:end]
 )
     old_n = length(old)
-    new_n = length(new) - ind + 1
+    new_n = length(new) - t + 1
     old_p = pointer(old)
-    new_p = pointer(new, ind)
-    # invariant: longest match is in suffixes[lo:hi]
+    new_p = pointer(new, t)
+    # invariant: longest match is in index[lo:hi]
     lo, hi = 1, old_n
     while hi - lo ≥ 2
         m = (lo + hi) >>> 1
-        s = suffixes[m]
+        s = index[m]
         if 0 < strcmp(new_p, new_n, old_p + s, old_n - s)
             lo = m
         else
             hi = m
         end
     end
-    i = suffixes[lo]+1
-    m = match_length(old, i, new, ind)
+    i = index[lo]+1
+    m = match_length(old, i, new, t)
     lo == hi && return (i, m)
-    j = suffixes[hi]+1
-    n = match_length(old, j, new, ind)
+    j = index[hi]+1
+    n = match_length(old, j, new, t)
     m > n ? (i, m) : (j, n)
 end
 
 """
 Computes and emits the diff of the byte vectors `new` versus `old`.
-The `suffixes` array is a zero-based suffix array of `old`.
+The `index` array is a zero-based suffix array of `old`.
 """
 function write_diff(
     io::IO,
     old::AbstractVector{UInt8},
     new::AbstractVector{UInt8},
-    suffixes::Vector{<:Integer} = suffixsort(old, 0),
+    index::IndexType = generate_index(old),
 )
     oldsize, newsize = length(old), length(new)
     scan = len = pos = lastscan = lastpos = lastoffset = 0
@@ -238,7 +242,7 @@ function write_diff(
         oldscore = 0
         scsc = scan += len
         while scan < newsize
-            pos, len = prefix_search(suffixes, old, new, scan+1)
+            pos, len = prefix_search(index, old, new, scan+1)
             pos -= 1 # zero-based
             while scsc < scan + len
                 oldscore += scsc + lastoffset < oldsize &&
