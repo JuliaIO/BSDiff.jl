@@ -196,13 +196,14 @@ int_io(x::Signed) = ifelse(x == abs(x), x, typemin(x) - x)
 Return lexicographic order and length of common prefix.
 """
 function strcmplen(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
-    i = j = l = x = 0
-    while i < m && j < n
-        x = cmp(unsafe_load(p+i), unsafe_load(q+j))
-        x ≠ 0 && break
-        i += 1; j += 1; l += 1
+    i = 0
+    while i < min(m, n)
+        a = unsafe_load(p + i)
+        b = unsafe_load(q + i)
+        a ≠ b && return (a - b) % Int8, i
+        i += 1
     end
-    return ifelse(x == 0, cmp(m, n), x), l
+    return (m - n) % Int8, i
 end
 
 """
@@ -232,7 +233,8 @@ function prefix_search(
         x = cmp(c, lcp)
         if dir == 0 || x == 0
             # need to look at more of the needle
-            dir, l = strcmplen(new_p+c, new_n-c, old_p+s+c, old_n-s-c)
+            d, l = strcmplen(new_p+c, new_n-c, old_p+s+c, old_n-s-c)
+            dir = sign(d)
             lcp += l
             dir == 0 && return (s+1, lcp)
         end
