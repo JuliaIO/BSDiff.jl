@@ -4,6 +4,23 @@ export bsdiff, bspatch, bsindex
 
 using SuffixArrays
 using TranscodingStreams, CodecBzip2
+using TranscodingStreams: Codec
+
+# abstract Patch format type
+# specific formats defined below
+abstract type Patch end
+
+patch_type(format::Symbol) =
+    format == :classic ? ClassicPatch :
+    format == :endsley ? EndsleyPatch :
+        throw(ArgumentError("unknown patch format: $format"))
+
+# specific format implementations
+
+include("classic.jl")
+include("endsley.jl")
+
+const DEFAULT_FORMAT = :classic
 
 ## high-level API (similar to the C tool) ##
 
@@ -23,12 +40,31 @@ array is the slowest part of generating a diff, pre-computing this and reusing
 it can significantly speed up generting diffs from the same old file to multiple
 different new files.
 """
-function bsdiff(old::AbstractStrings, new::AbstractString, patch::AbstractString)
-    bsdiff_core(data_and_index(old)..., read(new), patch, open(patch, write=true))
+function bsdiff(
+    old::AbstractStrings,
+    new::AbstractString,
+    patch::AbstractString;
+    format::Symbol = DEFAULT_FORMAT,
+)
+    bsdiff_core(
+        patch_type(format),
+        data_and_index(old)...,
+        read(new),
+        patch, open(patch, write=true),
+    )
 end
 
-function bsdiff(old::AbstractStrings, new::AbstractString)
-    bsdiff_core(data_and_index(old)..., read(new), mktemp()...)
+function bsdiff(
+    old::AbstractStrings,
+    new::AbstractString;
+    format::Symbol = DEFAULT_FORMAT,
+)
+    bsdiff_core(
+        patch_type(format),
+        data_and_index(old)...,
+        read(new),
+        mktemp()...,
+    )
 end
 
 """
@@ -42,15 +78,34 @@ Note that the optional argument is the middle argument, which is a bit unusual
 in a Julia API, but which allows the argument order when passing all three paths
 to be the same as the `bspatch` command.
 """
-function bspatch(old::AbstractString, new::AbstractString, patch::AbstractString)
+function bspatch(
+    old::AbstractString,
+    new::AbstractString,
+    patch::AbstractString;
+    format::Symbol = DEFAULT_FORMAT,
+)
     open(patch) do patch_io
-        bspatch_core(read(old), new, open(new, write=true), patch_io)
+        bspatch_core(
+            patch_type(format),
+            read(old),
+            new, open(new, write=true),
+            patch_io,
+        )
     end
 end
 
-function bspatch(old::AbstractString, patch::AbstractString)
+function bspatch(
+    old::AbstractString,
+    patch::AbstractString;
+    format::Symbol = DEFAULT_FORMAT,
+)
     open(patch) do patch_io
-        bspatch_core(read(old), mktemp()..., patch_io)
+        bspatch_core(
+            patch_type(format),
+            read(old),
+            mktemp()...,
+            patch_io,
+        )
     end
 end
 
@@ -73,53 +128,49 @@ end
 
 # common code for API entry points
 
-const PATCH_HEADER = "ENDSLEY/BSDIFF43"
 const INDEX_HEADER = "SUFFIX ARRAY\0"
 
 IndexType{T<:Integer} = Vector{T}
 
 function bsdiff_core(
+    format::Type{<:Patch},
     old_data::AbstractVector{UInt8},
     index::IndexType,
     new_data::AbstractVector{UInt8},
-    patch::AbstractString,
+    patch_file::AbstractString,
     patch_io::IO,
 )
     try
-        write(patch_io, PATCH_HEADER)
-        write(patch_io, int_io(Int64(length(new_data))))
-        io = TranscodingStream(Bzip2Compressor(), patch_io)
-        write_diff(io, old_data, new_data, index)
-        close(io)
+        patch = write_open(format, patch_io, old_data, new_data)
+        generate_patch(patch, old_data, new_data, index)
+        close(patch)
     catch
         close(patch_io)
-        rm(patch, force=true)
+        rm(patch_file, force=true)
         rethrow()
     end
     close(patch_io)
-    return patch
+    return patch_file
 end
 
 function bspatch_core(
+    format::Type{<:Patch},
     old_data::AbstractVector{UInt8},
-    new::AbstractString,
+    new_file::AbstractString,
     new_io::IO,
     patch_io::IO,
 )
     try
-        hdr = String(read(patch_io, ncodeunits(PATCH_HEADER)))
-        hdr == PATCH_HEADER || error("corrupt bsdiff patch")
-        new_size = Int(int_io(read(patch_io, Int64)))
-        io = TranscodingStream(Bzip2Decompressor(), patch_io)
-        apply_patch(old_data, io, new_io, new_size)
-        close(io)
+        patch = read_open(format, patch_io)
+        apply_patch(patch, old_data, new_io)
+        close(patch)
     catch
         close(new_io)
-        rm(new, force=true)
+        rm(new_file, force=true)
         rethrow()
     end
     close(new_io)
-    return new
+    return new_file
 end
 
 function bsindex_core(
@@ -158,13 +209,13 @@ function data_and_index((data_path, index_path)::NTuple{2,AbstractString})
             unit == 2 ? UInt16 :
             unit == 4 ? UInt32 :
             unit == 8 ? UInt64 :
-            error("invalid unit size for index file: $unit")
+            error("invalid unit size for bsdiff index file: $unit")
         read!(index_io, Vector{T}(undef, length(data)))
     end
     return data, index
 end
 
-## internal implementation logic ##
+## generic patch generation and application logic ##
 
 generate_index(data::AbstractVector{<:UInt8}) = suffixsort(data, 0)
 
@@ -221,8 +272,8 @@ end
 Computes and emits the diff of the byte vectors `new` versus `old`.
 The `index` array is a zero-based suffix array of `old`.
 """
-function write_diff(
-    io::IO,
+function generate_patch(
+    patch::Patch,
     old::AbstractVector{UInt8},
     new::AbstractVector{UInt8},
     index::IndexType = generate_index(old),
@@ -296,20 +347,9 @@ function write_diff(
             # skip if both blocks are empty
             diff_size == copy_size == 0 && continue
 
-            # write control data
-            write(io, int_io(Int64(diff_size)))
-            write(io, int_io(Int64(copy_size)))
-            write(io, int_io(Int64(skip_size)))
-
-            # write diff data
-            for i = 1:diff_size # `i` is one-based here
-                write(io, new[lastscan + i] - old[lastpos + i])
-            end
-
-            # write extra data
-            for i = 1:copy_size
-                write(io, new[lastscan + lenf + i])
-            end
+            encode_control(patch, diff_size, copy_size, skip_size)
+            encode_diff(patch, diff_size, new, lastscan, old, lastpos)
+            encode_data(patch, copy_size, new, lastscan + diff_size)
 
             lastscan = scan - lenb
             lastpos = pos - lenb
@@ -322,38 +362,31 @@ end
 Apply a patch stream to the `old` data buffer, emitting a `new` data stream.
 """
 function apply_patch(
+    patch::Patch,
     old::AbstractVector{UInt8},
-    patch::IO,
     new::IO,
-    new_size::Int = typemax(Int),
+    new_size::Int = hasfield(typeof(patch), :new_size) ? patch.new_size : typemax(Int),
 )
+    old_pos = new_pos = 0
     old_size = length(old)
-    n = pos = 0
-    while !eof(patch)
-        # read control data
-        diff_size = Int(int_io(read(patch, Int64)))
-        copy_size = Int(int_io(read(patch, Int64)))
-        skip_size = Int(int_io(read(patch, Int64)))
+    while true
+        ctrl = decode_control(patch)
+        ctrl == nothing && break
+        diff_size, copy_size, skip_size = ctrl
 
         # sanity checks
-        0 ≤ diff_size && 0 ≤ copy_size &&        # block sizes are non-negative
-        n + diff_size + copy_size ≤ new_size &&  # don't write > new_size bytes
-        0 ≤ pos && pos + diff_size ≤ old_size || # bounds check for old data
+        0 ≤ diff_size && 0 ≤ copy_size &&                # block sizes are non-negative
+        new_pos + diff_size + copy_size ≤ new_size &&    # don't write > new_size bytes
+        0 ≤ old_pos && old_pos + diff_size ≤ old_size || # bounds check for old data
             error("corrupt bsdiff patch")
 
-        # copy data from old to new, applying diff
-        @inbounds for i = 1:diff_size
-            n += write(new, old[pos + i] + read(patch, UInt8))
-        end
-        pos += diff_size
+        decode_diff(patch, diff_size, new, old, old_pos)
+        decode_data(patch, copy_size, new)
 
-        # copy fresh data from patch to new
-        for i = 1:copy_size
-            n += write(new, read(patch, UInt8))
-        end
-        pos += skip_size
+        new_pos += diff_size + copy_size
+        old_pos += diff_size + skip_size
     end
-    return n
+    return new_pos
 end
 
 end # module
