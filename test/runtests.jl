@@ -2,6 +2,7 @@ using Test
 using BSDiff
 using Pkg.Artifacts
 
+import bsdiff_classic_jll
 import bsdiff_endsley_jll
 
 const test_data = artifact"test_data"
@@ -15,28 +16,35 @@ const test_data = artifact"test_data"
         suffix_file = joinpath(dir, "suffixes")
         write(old_file, "Goodbye, world.")
         write(new_file, "Hello, world!")
-        # check API passing only two paths
-        @testset "2-arg API" begin
-            patch_file = bsdiff(old_file, new_file)
-            new_file′ = bspatch(old_file, patch_file)
-            @test read(new_file′, String) == "Hello, world!"
-        end
-        # check API passing all three paths
-        @testset "3-arg API" begin
-            patch_file = joinpath(dir, "patch")
-            new_file′ = joinpath(dir, "new′")
-            bsdiff(old_file, new_file, patch_file)
-            bspatch(old_file, new_file′, patch_file)
-            @test read(new_file′, String) == "Hello, world!"
-        end
-        @testset "bsindex API" begin
-            bsindex(old_file, suffix_file)
-            patch_file = bsdiff((old_file, suffix_file), new_file)
-            new_file′ = bspatch(old_file, patch_file)
-            @test read(new_file′, String) == "Hello, world!"
-            # test that tempfile API makes the same file
-            suffix_file′ = bsindex(old_file)
-            @test read(suffix_file) == read(suffix_file′)
+        for format in (nothing, :classic, :endsley)
+            fmt = format == nothing ? [] : [:format => format]
+            # check API passing only two paths
+            @testset "2-arg API" begin
+                patch_file = bsdiff(old_file, new_file; fmt...)
+                new_file′ = bspatch(old_file, patch_file; fmt...)
+                @test read(new_file′, String) == "Hello, world!"
+                new_file′ = bspatch(old_file, patch_file) # format auto-detected
+                @test read(new_file′, String) == "Hello, world!"
+            end
+            # check API passing all three paths
+            @testset "3-arg API" begin
+                patch_file = joinpath(dir, "patch")
+                new_file′ = joinpath(dir, "new′")
+                bsdiff(old_file, new_file, patch_file; fmt...)
+                bspatch(old_file, new_file′, patch_file; fmt...)
+                @test read(new_file′, String) == "Hello, world!"
+                bspatch(old_file, new_file′, patch_file) # format auto-detected
+                @test read(new_file′, String) == "Hello, world!"
+            end
+            @testset "bsindex API" begin
+                bsindex(old_file, suffix_file)
+                patch_file = bsdiff((old_file, suffix_file), new_file; fmt...)
+                new_file′ = bspatch(old_file, patch_file; fmt...)
+                @test read(new_file′, String) == "Hello, world!"
+                # test that tempfile API makes the same file
+                suffix_file′ = bsindex(old_file)
+                @test read(suffix_file) == read(suffix_file′)
+            end
         end
         rm(dir, recursive=true, force=true)
     end
@@ -50,34 +58,43 @@ const test_data = artifact"test_data"
         @testset "low-level API" begin
             # test that diff is identical to reference diff
             diff = sprint() do io
-                BSDiff.write_diff(io, old_data, new_data)
+                patch = BSDiff.EndsleyPatch(io, length(new_data))
+                BSDiff.generate_patch(patch, old_data, new_data)
             end |> codeunits
             @test read(ref) == diff
             # test that applying reference patch to old produces new
-            new_data′ = open(ref) do patch
-                sprint() do new
-                    BSDiff.apply_patch(old_data, patch, new, length(new_data))
+            new_data′ = open(ref) do io
+                sprint() do new_io
+                    patch = BSDiff.EndsleyPatch(io, length(new_data))
+                    BSDiff.apply_patch(patch, old_data, new_io)
                 end |> codeunits
             end
             @test new_data == new_data′
         end
-        if !Sys.iswindows() # bsdiff_endsley_jll doesn't compile on Windows
-            @testset "high-level API" begin
-                # test that bspatch command accepts patches we generate
-                patch = bsdiff(old, new)
-                new′ = tempname()
-                bsdiff_endsley_jll.bspatch() do bspatch
-                    run(`$bspatch $old $new′ $patch`)
+        if !Sys.iswindows() # bsdiff JLLs don't compile on Windows
+            for (format, jll) in [
+                    (:classic, bsdiff_classic_jll),
+                    (:endsley, bsdiff_endsley_jll),
+                ]
+                @testset "high-level API" begin
+                    # test that bspatch command accepts patches we generate
+                    patch = bsdiff(old, new, format = format)
+                    new′ = tempname()
+                    jll.bspatch() do bspatch
+                        run(`$bspatch $old $new′ $patch`)
+                    end
+                    @test new_data == read(new′)
+                    rm(new′)
+                    # test that we accept patches generated by bsdiff command
+                    patch = tempname()
+                    jll.bsdiff() do bsdiff
+                        run(`$bsdiff $old $new $patch`)
+                    end
+                    new′ = bspatch(old, patch, format = format)
+                    @test new_data == read(new′)
+                    new′ = bspatch(old, patch) # format auto-detected
+                    @test new_data == read(new′)
                 end
-                @test new_data == read(new′)
-                rm(new′)
-                # test that we accept patches generated by bsdiff command
-                patch = tempname()
-                bsdiff_endsley_jll.bsdiff() do bsdiff
-                    run(`$bsdiff $old $new $patch`)
-                end
-                new′ = bspatch(old, patch)
-                @test new_data == read(new′)
             end
         end
     end
