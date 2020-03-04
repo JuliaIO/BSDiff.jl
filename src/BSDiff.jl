@@ -14,6 +14,7 @@ abstract type Patch end
 
 include("classic.jl")
 include("endsley.jl")
+include("sparse.jl")
 
 # format names, patch types, auto detection
 
@@ -21,6 +22,7 @@ const DEFAULT_FORMAT = :classic
 const FORMATS = Dict(
     :classic => ClassicPatch,
     :endsley => EndsleyPatch,
+    :sparse  => SparsePatch,
 )
 
 function patch_type(format::Symbol)

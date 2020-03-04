@@ -6,6 +6,7 @@ import bsdiff_classic_jll
 import bsdiff_endsley_jll
 
 const test_data = artifact"test_data"
+const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 
 @testset "BSDiff" begin
     @testset "API coverage" begin
@@ -16,7 +17,7 @@ const test_data = artifact"test_data"
         suffix_file = joinpath(dir, "suffixes")
         write(old_file, "Goodbye, world.")
         write(new_file, "Hello, world!")
-        for format in (nothing, :classic, :endsley)
+        for format in [nothing; FORMATS]
             fmt = format == nothing ? [] : [:format => format]
             # check API passing only two paths
             @testset "2-arg API" begin
@@ -55,6 +56,11 @@ const test_data = artifact"test_data"
         ref = joinpath(registry_data, "reference.diff")
         old_data = read(old)
         new_data = read(new)
+        @testset "hi-level API" for format in FORMATS
+            patch = bsdiff(old, new, format = format)
+            new′ = bspatch(old, patch)
+            @test read(new) == read(new′)
+        end
         @testset "low-level API" begin
             # test that diff is identical to reference diff
             diff = sprint() do io
@@ -76,7 +82,7 @@ const test_data = artifact"test_data"
                     (:classic, bsdiff_classic_jll),
                     (:endsley, bsdiff_endsley_jll),
                 ]
-                @testset "high-level API" begin
+                @testset "compatibility" begin
                     # test that bspatch command accepts patches we generate
                     patch = bsdiff(old, new, format = format)
                     new′ = tempname()
