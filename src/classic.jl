@@ -26,7 +26,6 @@ function read_start(
     ::Type{ClassicPatch},
     patch_io::IO;
     codec::Codec = Bzip2Decompressor(),
-    header::Bool = true,
 )
     ctrl_size = int_io(read(patch_io, Int64))
     diff_size = int_io(read(patch_io, Int64))

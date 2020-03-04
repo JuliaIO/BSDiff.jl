@@ -22,7 +22,6 @@ function read_start(
     ::Type{EndsleyPatch},
     patch_io::IO;
     codec::Codec = Bzip2Decompressor(),
-    header::Bool = true,
 )
     new_size = int_io(read(patch_io, Int64))
     EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
