@@ -39,7 +39,7 @@ The public API for the `BSDiff` package consists of the following functions:
 ### bsdiff
 
 ```julia
-bsdiff(old, new, [ patch ]) -> patch
+bsdiff(old, new, [ patch ]; format = [ :classic | :endsley ]) -> patch
 ```
 Compute a binary patch that will transform the file `old` into the file `new`.
 All arguments are strings. If no path is passed for `patch` the patch data is
@@ -59,7 +59,7 @@ selected by with `bsdiff(old, new; format = :endsley)`.
 ### bspatch
 
 ```julia
-bspatch(old, [ new, ] patch) -> new
+bspatch(old, [ new, ] patch; format = [ :classic | :endsley ]) -> new
 ```
 Apply a binary patch in file `patch` to the file `old` producing file `new`.
 All arguments are strings. If no path is passed for `new` the new data is
