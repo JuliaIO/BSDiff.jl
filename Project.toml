@@ -1,7 +1,7 @@
 name = "BSDiff"
 uuid = "7b188ff4-8bb6-4dee-bbe1-9b6fdde2c7c5"
 authors = ["Stefan Karpinski <stefan@karpinski.org>"]
-version = "0.1.0"
+version = "1.0.0"
 
 [deps]
 CodecBzip2 = "523fee87-0ab8-5b00-afb7-3ecf72e48cfd"
