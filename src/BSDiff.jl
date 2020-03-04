@@ -10,17 +10,43 @@ using TranscodingStreams: Codec
 # specific formats defined below
 abstract type Patch end
 
-patch_type(format::Symbol) =
-    format == :classic ? ClassicPatch :
-    format == :endsley ? EndsleyPatch :
-        throw(ArgumentError("unknown patch format: $format"))
-
 # specific format implementations
 
 include("classic.jl")
 include("endsley.jl")
 
+# format names, patch types, auto detection
+
 const DEFAULT_FORMAT = :classic
+const FORMATS = Dict(
+    :classic => ClassicPatch,
+    :endsley => EndsleyPatch,
+)
+
+function patch_type(format::Symbol)
+    type = get(FORMATS, format, nothing)
+    type !== nothing && return type
+    throw(ArgumentError("unknown patch format: $format"))
+end
+
+function format_name(type::Type{<:Patch})
+    for (format, type′) in FORMATS
+        type == type′ && return format
+    end
+    throw(ArgumentError("unknown patch type: $type"))
+end
+
+function detect_format(patch_io::IO, raise::Bool=false)
+    for (format, type) in FORMATS
+        mark(patch_io)
+        MAGIC = format_magic(type)
+        magic = String(read(patch_io, ncodeunits(MAGIC)))
+        reset(patch_io)
+        magic == MAGIC && return format
+    end
+    raise ? error("unrecognized patch format") : :unknown
+end
+detect_format(path::AbstractString) = open(detect_format, path)
 
 ## high-level API (similar to the C tool) ##
 
@@ -82,9 +108,10 @@ function bspatch(
     old::AbstractString,
     new::AbstractString,
     patch::AbstractString;
-    format::Symbol = DEFAULT_FORMAT,
+    format::Symbol = :auto,
 )
     open(patch) do patch_io
+        format == :auto && (format = detect_format(patch_io, true))
         bspatch_core(
             patch_type(format),
             read(old),
@@ -97,9 +124,10 @@ end
 function bspatch(
     old::AbstractString,
     patch::AbstractString;
-    format::Symbol = DEFAULT_FORMAT,
+    format::Symbol = :auto,
 )
     open(patch) do patch_io
+        format == :auto && (format = detect_format(patch_io, true))
         bspatch_core(
             patch_type(format),
             read(old),
@@ -141,7 +169,8 @@ function bsdiff_core(
     patch_io::IO,
 )
     try
-        patch = write_open(format, patch_io, old_data, new_data)
+        write(patch_io, format_magic(format))
+        patch = write_start(format, patch_io, old_data, new_data)
         generate_patch(patch, old_data, new_data, index)
         close(patch)
     catch
@@ -161,7 +190,19 @@ function bspatch_core(
     patch_io::IO,
 )
     try
-        patch = read_open(format, patch_io)
+        MAGIC = format_magic(format)
+        magic = String(read(patch_io, ncodeunits(MAGIC)))
+        if magic ≠ MAGIC
+            fmt = format_name(format)
+            if applicable(seekstart, patch_io)
+                seekstart(patch_io)
+                detected = detect_format(patch_io)
+                detected ≠ :unknown &&
+                    error("patch has $detected format, expected $fmt format")
+            end
+            error("corrupt $fmt patch, wrong magic: $magic")
+        end
+        patch = read_start(format, patch_io)
         apply_patch(patch, old_data, new_io)
         close(patch)
     catch

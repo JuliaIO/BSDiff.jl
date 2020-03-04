@@ -23,6 +23,8 @@ const test_data = artifact"test_data"
                 patch_file = bsdiff(old_file, new_file; fmt...)
                 new_file′ = bspatch(old_file, patch_file; fmt...)
                 @test read(new_file′, String) == "Hello, world!"
+                new_file′ = bspatch(old_file, patch_file) # format auto-detected
+                @test read(new_file′, String) == "Hello, world!"
             end
             # check API passing all three paths
             @testset "3-arg API" begin
@@ -30,6 +32,8 @@ const test_data = artifact"test_data"
                 new_file′ = joinpath(dir, "new′")
                 bsdiff(old_file, new_file, patch_file; fmt...)
                 bspatch(old_file, new_file′, patch_file; fmt...)
+                @test read(new_file′, String) == "Hello, world!"
+                bspatch(old_file, new_file′, patch_file) # format auto-detected
                 @test read(new_file′, String) == "Hello, world!"
             end
             @testset "bsindex API" begin
@@ -87,6 +91,8 @@ const test_data = artifact"test_data"
                         run(`$bsdiff $old $new $patch`)
                     end
                     new′ = bspatch(old, patch, format = format)
+                    @test new_data == read(new′)
+                    new′ = bspatch(old, patch) # format auto-detected
                     @test new_data == read(new′)
                 end
             end

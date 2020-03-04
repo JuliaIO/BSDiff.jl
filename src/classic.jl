@@ -6,31 +6,28 @@ struct ClassicPatch{T<:IO,C<:Codec} <: Patch
     new_size::Int64
 end
 
-header(::Type{ClassicPatch}) = "BSDIFF40"
+format_magic(::Type{ClassicPatch}) = "BSDIFF40"
 
-function write_open(
+function write_start(
     ::Type{ClassicPatch},
     patch_io::IO,
     old_data::AbstractVector{UInt8},
     new_data::AbstractVector{UInt8};
     codec::Codec = Bzip2Compressor(),
 )
-    new_size = length(new_data)
-    write(patch_io, header(ClassicPatch))
+    # nothing written yet
     ctrl = TranscodingStream(deepcopy(codec), IOBuffer())
     diff = TranscodingStream(deepcopy(codec), IOBuffer())
     data = TranscodingStream(identity(codec), IOBuffer())
-    ClassicPatch(patch_io, ctrl, diff, data, new_size)
+    ClassicPatch(patch_io, ctrl, diff, data, length(new_data))
 end
 
-function read_open(
+function read_start(
     ::Type{ClassicPatch},
     patch_io::IO;
     codec::Codec = Bzip2Decompressor(),
+    header::Bool = true,
 )
-    HDR = header(ClassicPatch)
-    hdr = String(read(patch_io, ncodeunits(HDR)))
-    hdr == HDR || error("corrupt bsdiff (classic) patch")
     ctrl_size = int_io(read(patch_io, Int64))
     diff_size = int_io(read(patch_io, Int64))
     new_size  = int_io(read(patch_io, Int64))

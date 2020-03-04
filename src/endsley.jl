@@ -4,9 +4,9 @@ struct EndsleyPatch{T<:IO} <: Patch
 end
 EndsleyPatch(io::IO) = EndsleyPatch(io, typemax(Int64))
 
-header(::Type{EndsleyPatch}) = "ENDSLEY/BSDIFF43"
+format_magic(::Type{EndsleyPatch}) = "ENDSLEY/BSDIFF43"
 
-function write_open(
+function write_start(
     ::Type{EndsleyPatch},
     patch_io::IO,
     old_data::AbstractVector{UInt8},
@@ -14,19 +14,16 @@ function write_open(
     codec::Codec = Bzip2Compressor(),
 )
     new_size = length(new_data)
-    write(patch_io, header(EndsleyPatch))
     write(patch_io, int_io(Int64(new_size)))
     EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
 end
 
-function read_open(
+function read_start(
     ::Type{EndsleyPatch},
     patch_io::IO;
     codec::Codec = Bzip2Decompressor(),
+    header::Bool = true,
 )
-    HDR = header(EndsleyPatch)
-    hdr = String(read(patch_io, ncodeunits(HDR)))
-    hdr == HDR || error("corrupt bsdiff (endsley) patch")
     new_size = int_io(read(patch_io, Int64))
     EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
 end
