@@ -17,7 +17,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
         suffix_file = joinpath(dir, "suffixes")
         write(old_file, "Goodbye, world.")
         write(new_file, "Hello, world!")
-        for format in (nothing, :classic, :endsley)
+        for format in [nothing; FORMATS]
             fmt = format == nothing ? [] : [:format => format]
             # check API passing only two paths
             @testset "2-arg API" begin
@@ -86,7 +86,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
                     (:classic, bsdiff_classic_jll),
                     (:endsley, bsdiff_endsley_jll),
                 ]
-                @testset "high-level API" begin
+                @testset "compatibility" begin
                     # test that bspatch command accepts patches we generate
                     patch = bsdiff(old, new, format = format)
                     new′ = tempname()
