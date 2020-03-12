@@ -8,6 +8,24 @@ import bsdiff_endsley_jll
 const test_data = artifact"test_data"
 const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 
+@testset "ZRLE" begin
+    function test_zrle(raw::String, enc::String)
+        @test String(BSDiff.zrle(codeunits(raw))) == enc
+        @test String(BSDiff.zrld(codeunits(enc))) == raw
+    end
+    test_zrle("", "")
+    test_zrle("xyz", "xyz")
+    test_zrle("\0", "\0\0")
+    test_zrle("\0\0", "\0\1")
+    test_zrle("\0\0\0", "\0\2")
+    test_zrle("\0xyz", "\0\0xyz")
+    test_zrle("\0\0xyz", "\0\1xyz")
+    test_zrle("\0\0\0xyz", "\0\2xyz")
+    test_zrle("xyz\0", "xyz\0\0")
+    test_zrle("xyz\0\0", "xyz\0\1")
+    test_zrle("xyz\0\0\0", "xyz\0\2")
+end
+
 @testset "BSDiff" begin
     @testset "API coverage" begin
         # create new, old and reference patch files

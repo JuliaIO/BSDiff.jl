@@ -446,4 +446,6 @@ function apply_patch(
     return new_pos
 end
 
+include("zrle.jl")
+
 end # module
