@@ -1,15 +1,16 @@
 include("leb128.jl")
+include("zrle.jl")
 
-struct SparsePatch{T<:IO} <: Patch
+struct ZSparsePatch{T<:IO} <: Patch
     io::T
     new_size::Int64
 end
-SparsePatch(io::IO) = SparsePatch(io, typemax(Int64))
+ZSparsePatch(io::IO) = ZSparsePatch(io, typemax(Int64))
 
-format_magic(::Type{SparsePatch}) = "BSDiff.jl/Sparse\0"
+format_magic(::Type{ZSparsePatch}) = "BSDiff.jl/ZSparse\0"
 
 function write_start(
-    ::Type{SparsePatch},
+    ::Type{ZSparsePatch},
     patch_io::IO,
     old_data::AbstractVector{UInt8},
     new_data::AbstractVector{UInt8};
@@ -17,21 +18,21 @@ function write_start(
 )
     new_size = length(new_data)
     write_leb128(patch_io, UInt64(new_size))
-    SparsePatch(patch_io, new_size)
+    ZSparsePatch(patch_io, new_size)
 end
 
 function read_start(
-    ::Type{SparsePatch},
+    ::Type{ZSparsePatch},
     patch_io::IO;
 )
     new_size = Int(read_leb128(patch_io, UInt64))
-    SparsePatch(patch_io, new_size)
+    ZSparsePatch(patch_io, new_size)
 end
 
-Base.close(patch::SparsePatch) = close(patch.io)
+Base.close(patch::ZSparsePatch) = close(patch.io)
 
 function encode_control(
-    patch::SparsePatch,
+    patch::ZSparsePatch,
     diff_size::Int,
     copy_size::Int,
     skip_size::Int,
@@ -42,7 +43,7 @@ function encode_control(
     write_leb128(patch.io, UInt64(skip_size))
 end
 
-function decode_control(patch::SparsePatch)
+function decode_control(patch::ZSparsePatch)
     eof(patch.io) && return nothing
     diff_size = Int(read_leb128(patch.io, UInt64))
     copy_size = Int(read_leb128(patch.io, UInt64))
@@ -53,7 +54,7 @@ function decode_control(patch::SparsePatch)
 end
 
 function encode_diff(
-    patch::SparsePatch,
+    patch::ZSparsePatch,
     diff_size::Int,
     new::AbstractVector{UInt8}, new_pos::Int,
     old::AbstractVector{UInt8}, old_pos::Int,
@@ -68,7 +69,7 @@ function encode_diff(
 end
 
 function decode_diff(
-    patch::SparsePatch,
+    patch::ZSparsePatch,
     diff_size::Int,
     new::IO,
     old::AbstractVector{UInt8},
@@ -90,7 +91,7 @@ function decode_diff(
 end
 
 function encode_data(
-    patch::SparsePatch,
+    patch::ZSparsePatch,
     copy_size::Int,
     new::AbstractVector{UInt8}, pos::Int,
 )
@@ -100,7 +101,7 @@ function encode_data(
 end
 
 function decode_data(
-    patch::SparsePatch,
+    patch::ZSparsePatch,
     copy_size::Int,
     new::IO,
 )

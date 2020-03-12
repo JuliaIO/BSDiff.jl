@@ -1,4 +1,4 @@
-# variable-length integer I/O
+## variable-length integer I/O ##
 
 function write_leb128(io::IO, n::Unsigned)
     while true

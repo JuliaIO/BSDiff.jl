@@ -14,7 +14,7 @@ abstract type Patch end
 
 include("classic.jl")
 include("endsley.jl")
-include("sparse.jl")
+include("zsparse.jl")
 
 # format names, patch types, auto detection
 
@@ -22,7 +22,7 @@ const DEFAULT_FORMAT = :classic
 const FORMATS = Dict(
     :classic => ClassicPatch,
     :endsley => EndsleyPatch,
-    :sparse  => SparsePatch,
+    :zsparse => ZSparsePatch,
 )
 
 function patch_type(format::Symbol)
@@ -79,12 +79,12 @@ function bsdiff(
     format::Symbol = DEFAULT_FORMAT,
 )
     type = patch_type(format)
-    old_data = load_data(old)
+    old_data = load_data(type, old)
     bsdiff_core(
         type,
         old_data,
         load_index(old, old_data),
-        read(new),
+        load_data(type, new),
         patch, open(patch, write=true),
     )
 end
@@ -95,12 +95,12 @@ function bsdiff(
     format::Symbol = DEFAULT_FORMAT,
 )
     type = patch_type(format)
-    old_data = load_data(old)
+    old_data = load_data(type, old)
     bsdiff_core(
         type,
         old_data,
         load_index(old, old_data),
-        read(new),
+        load_data(type, new),
         mktemp()...,
     )
 end
@@ -128,10 +128,12 @@ function bspatch(
 )
     open(patch) do patch_io
         format == :auto && (format = detect_format(patch_io, true))
+        type = patch_type(format)
         bspatch_core(
-            patch_type(format),
-            read(old),
-            new, open(new, write=true),
+            type,
+            load_data(type, old),
+            new,
+            save_data(type, open(new, write=true)),
             patch_io,
         )
     end
@@ -144,10 +146,14 @@ function bspatch(
 )
     open(patch) do patch_io
         format == :auto && (format = detect_format(patch_io, true))
+        type = patch_type(format)
+        old_data = load_data(type, old)
+        new, new_io = mktemp()
         bspatch_core(
-            patch_type(format),
-            read(old),
-            mktemp()...,
+            type,
+            load_data(type, old),
+            new,
+            save_data(type, new_io),
             patch_io,
         )
     end
@@ -249,11 +255,20 @@ function bsindex_core(
     return index_path
 end
 
-## loading data and index ##
+## loading & saving data and index ##
 
-load_data(data_path::AbstractString) = read(data_path)
-load_data((data_path, index_path)::NTuple{2,AbstractString}) = load_data(data_path)
-load_index(data_path::AbstractString, data::AbstractVector{<:UInt8}) = generate_index(data)
+load_data(::Type, data_path::AbstractString) =
+    read(data_path)
+load_data(::Type{ZSparsePatch}, data_path::AbstractString) =
+    read_zrle(data_path)
+load_data(type::Type, (data_path, index_path)::NTuple{2,AbstractString}) =
+    load_data(type, data_path)
+
+save_data(::Type, io::IO) = io
+save_data(::Type{ZSparsePatch}, io::IO) = ZRLE(io)
+
+load_index(data_path::AbstractString, data::AbstractVector{<:UInt8}) =
+    generate_index(data)
 
 function load_index(
     (data_path, index_path)::NTuple{2,AbstractString},
@@ -445,7 +460,5 @@ function apply_patch(
     end
     return new_pos
 end
-
-include("zrle.jl")
 
 end # module

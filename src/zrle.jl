@@ -49,8 +49,8 @@ function Base.read(io::ZRLE, ::Type{UInt8})
     return byte
 end
 
-read_zrle(path::AbstractString) = open(read_zrle, path)
 read_zrle(io::IO) = read(ZRLE(io))
+read_zrle(path::AbstractString) = open(read_zrle, path)
 
 function zrle(data::AbstractVector{UInt8})
     buffer = IOBuffer()
