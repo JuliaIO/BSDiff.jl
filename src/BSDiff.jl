@@ -78,9 +78,12 @@ function bsdiff(
     patch::AbstractString;
     format::Symbol = DEFAULT_FORMAT,
 )
+    type = patch_type(format)
+    old_data = load_data(old)
     bsdiff_core(
-        patch_type(format),
-        data_and_index(old)...,
+        type,
+        old_data,
+        load_index(old, old_data),
         read(new),
         patch, open(patch, write=true),
     )
@@ -91,9 +94,12 @@ function bsdiff(
     new::AbstractString;
     format::Symbol = DEFAULT_FORMAT,
 )
+    type = patch_type(format)
+    old_data = load_data(old)
     bsdiff_core(
-        patch_type(format),
-        data_and_index(old)...,
+        type,
+        old_data,
+        load_index(old, old_data),
         read(new),
         mktemp()...,
     )
@@ -245,14 +251,15 @@ end
 
 ## loading data and index ##
 
-function data_and_index(data_path::AbstractString)
-    data = read(data_path)
-    data, generate_index(data)
-end
+load_data(data_path::AbstractString) = read(data_path)
+load_data((data_path, index_path)::NTuple{2,AbstractString}) = load_data(data_path)
+load_index(data_path::AbstractString, data::AbstractVector{<:UInt8}) = generate_index(data)
 
-function data_and_index((data_path, index_path)::NTuple{2,AbstractString})
-    data = read(data_path)
-    index = open(index_path) do index_io
+function load_index(
+    (data_path, index_path)::NTuple{2,AbstractString},
+    data::AbstractVector{<:UInt8},
+)
+    open(index_path) do index_io
         hdr = String(read(index_io, ncodeunits(INDEX_HEADER)))
         hdr == INDEX_HEADER || error("corrupt bsdiff index")
         unit = Int(read(index_io, UInt8))
@@ -263,7 +270,6 @@ function data_and_index((data_path, index_path)::NTuple{2,AbstractString})
             error("invalid unit size for bsdiff index file: $unit")
         read!(index_io, Vector{T}(undef, length(data)))
     end
-    return data, index
 end
 
 ## generic patch generation and application logic ##
