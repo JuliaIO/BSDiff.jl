@@ -11,7 +11,6 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 @testset "ZRLE" begin
     function test_zrle(raw::String, enc::String)
         @test String(BSDiff.zrle(codeunits(raw))) == enc
-        @test String(BSDiff.zrld(codeunits(enc))) == raw
     end
     test_zrle("", "")
     test_zrle("xyz", "xyz")

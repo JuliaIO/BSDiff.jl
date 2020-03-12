@@ -7,57 +7,38 @@ end
 ZRLE(io::IO) = ZRLE{typeof(io)}(io, 0)
 
 Base.eof(io::ZRLE) = io.zeros == 0 && eof(io.stream)
-Base.isopen(io::ZRLE) = isopen(io.stream)
-
-function flush_zeros(io::ZRLE)
-    if io.zeros > 0
-        write(io.stream, 0x0)
-        write_leb128(io.stream, io.zeros-1)
-        io.zeros = 0
-    end
-end
-
-function Base.flush(io::ZRLE)
-    flush_zeros(io)
-    flush(io.stream)
-end
-
-function Base.close(io::ZRLE)
-    isreadonly(io.stream) || flush_zeros(io)
-    close(io.stream)
-end
-
-function Base.write(io::ZRLE, byte::UInt8)
-    if byte == 0
-        io.zeros += 1
-    else
-        flush_zeros(io)
-        write(io.stream, byte)
-    end
-    return 1
-end
 
 function Base.read(io::ZRLE, ::Type{UInt8})
-    if io.zeros > 0
-        io.zeros -= 1
-        return 0x0
+    zeros = io.zeros
+    if zeros > 0
+        byte = (zeros % UInt8) & 0x7f
+        zeros >>= 7
+        byte |= UInt8(zeros > 0) << 7
+        io.zeros = zeros
+        return byte
     end
-    byte = read(io.stream, UInt8)
-    if byte == 0
-        io.zeros = read_leb128(io.stream, typeof(io.zeros))
+    while !eof(io.stream)
+        byte = read(io.stream, UInt8)
+        if byte == 0
+            zeros += 1
+        elseif zeros == 0
+            return byte
+        else
+            io.zeros = zeros
+            return 0x0
+        end
     end
-    return byte
+    if zeros > 0
+        byte = (zeros % UInt8) & 0x7f
+        zeros >>= 7
+        byte |= UInt8(zeros > 0) << 7
+        io.zeros = zeros
+        return byte
+    end
+    read(io.stream, UInt8) # error
 end
 
 read_zrle(io::IO) = read(ZRLE(io))
 read_zrle(path::AbstractString) = open(read_zrle, path)
 
-function zrle(data::AbstractVector{UInt8})
-    buffer = IOBuffer()
-    io = ZRLE(buffer)
-    write(io, data)
-    flush(io)
-    take!(buffer)
-end
-
-zrld(data::AbstractVector{UInt8}) = read(ZRLE(IOBuffer(data)))
+zrle(data::AbstractVector{UInt8}) = read(ZRLE(IOBuffer(data)))
