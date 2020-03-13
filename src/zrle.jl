@@ -7,30 +7,28 @@ end
 ZRLE(io::IO) = ZRLE{typeof(io)}(io, 0)
 
 Base.eof(io::ZRLE) = io.zeros == 0 && eof(io.stream)
-
-function emit_leb128_byte(io::IO, zeros::UInt64)
-    byte = (zeros % UInt8) & 0x7f
-    zeros >>= 7
-    byte |= UInt8(zeros > 0) << 7
-    io.zeros = zeros
-    return byte
-end
+Base.close(io::ZRLE) = close(io.stream)
 
 function Base.read(io::ZRLE, ::Type{UInt8})
     zeros = io.zeros
-    zeros > 0 && return emit_leb128_byte(io, zeros)
-    while true
+    if zeros == 0
         byte = read(io.stream, UInt8)
-        if byte ≠ 0
-            zeros == 0 && return byte
-            io.zeros = zeros
-            return 0x0
-        end
+        byte ≠ 0 && return byte
         zeros += 1
-        if eof(io.stream) && 
-
+        while !eof(io.stream) && Base.peek(io.stream) == 0
+            byte = read(io.stream, UInt8)
+            @assert byte == 0
+            zeros += 1
         end
+        io.zeros = zeros
+        return 0x0
     end
+    n = zeros - 1
+    byte = (n % UInt8) & 0x7f
+    n >>= 7
+    byte |= UInt8(n > 0) << 7
+    io.zeros = n + (n > 0)
+    return byte
 end
 
 read_zrle(io::IO) = read(ZRLE(io))
