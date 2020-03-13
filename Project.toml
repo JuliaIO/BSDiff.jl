@@ -9,7 +9,7 @@ SuffixArrays = "24f65c1e-0a10-5d3d-8a1f-a83399f3fced"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 
 [compat]
-CodecBzip2 = "0.6"
+CodecBzip2 = "0.6, 0.7"
 SuffixArrays = "0.3"
 TranscodingStreams = "0.9.5"
 julia = "1.3"
