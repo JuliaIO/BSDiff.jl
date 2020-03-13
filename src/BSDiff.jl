@@ -55,7 +55,7 @@ detect_format(path::AbstractString) = open(detect_format, path)
 const AbstractStrings = Union{AbstractString,NTuple{2,AbstractString}}
 
 """
-    bsdiff(old, new, [ patch ]; format = [ :classic | :endsley ]) -> patch
+    bsdiff(old, new, [ patch ]; format = format) -> patch
 
 Compute a binary patch that will transform the file `old` into the file `new`.
 All arguments are strings. If no path is passed for `patch` the patch data is
@@ -106,7 +106,7 @@ function bsdiff(
 end
 
 """
-    bspatch(old, [ new, ] patch; format = [ :classic | :endsley ]) -> new
+    bspatch(old, [ new, ] patch; format = format) -> new
 
 Apply a binary patch in file `patch` to the file `old` producing file `new`.
 All arguments are strings. If no path is passed for `new` the new data is
@@ -160,7 +160,7 @@ function bspatch(
 end
 
 """
-    bsindex(old, [ index ]) -> index
+    bsindex(old, [ index ]; format = format) -> index
 
 Save index data (currently a sorted suffix array) for the file `old` into the
 file `index`. All arguments are strings. If no `index` argument is given, the
@@ -168,12 +168,21 @@ index data is saved to a temporary file whose path is returned. The path of the
 index file can be passed to `bsdiff` to speed up the diff computation by passing
 `(old, index)` as the first argument instead of just `old`.
 """
-function bsindex(old::AbstractString, index::AbstractString)
-    bsindex_core(read(old), index, open(index, write=true))
+function bsindex(
+    old::AbstractString,
+    index::AbstractString;
+    format::Symbol = DEFAULT_FORMAT,
+)
+    type = patch_type(format)
+    bsindex_core(load_data(type, old), index, open(index, write=true))
 end
 
-function bsindex(old::AbstractString)
-    bsindex_core(read(old), mktemp()...)
+function bsindex(
+    old::AbstractString;
+    format::Symbol = DEFAULT_FORMAT,
+)
+    type = patch_type(format)
+    bsindex_core(load_data(type, old), mktemp()...)
 end
 
 # common code for API entry points

@@ -26,7 +26,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
     test_zrle("xyz\0\0\0", "xyz\0\2")
 end
 
-false && @testset "BSDiff" begin
+@testset "BSDiff" begin
     @testset "API coverage" begin
         # create new, old and reference patch files
         dir = mktempdir()
@@ -56,12 +56,12 @@ false && @testset "BSDiff" begin
                 @test read(new_file′, String) == "Hello, world!"
             end
             @testset "bsindex API" begin
-                bsindex(old_file, suffix_file)
+                bsindex(old_file, suffix_file; fmt...)
                 patch_file = bsdiff((old_file, suffix_file), new_file; fmt...)
                 new_file′ = bspatch(old_file, patch_file; fmt...)
                 @test read(new_file′, String) == "Hello, world!"
                 # test that tempfile API makes the same file
-                suffix_file′ = bsindex(old_file)
+                suffix_file′ = bsindex(old_file; fmt...)
                 @test read(suffix_file) == read(suffix_file′)
             end
         end
@@ -75,9 +75,17 @@ false && @testset "BSDiff" begin
         old_data = read(old)
         new_data = read(new)
         @testset "hi-level API" for format in FORMATS
-            patch = bsdiff(old, new, format = format)
+            index = bsindex(old, format = format)
+            patch = @time bsdiff((old, index), new, format = format)
+            patch = @time bsdiff((old, index), new, format = format)
+            patch = @time bsdiff((old, index), new, format = format)
             new′ = bspatch(old, patch)
             @test read(new) == read(new′)
+            @show format, filesize(patch)
+            for (compress, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
+                run(`$compress -qk9 $patch`)
+                @show compress, filesize("$patch.$ext")
+            end
         end
         @testset "low-level API" begin
             # test that diff is identical to reference diff
