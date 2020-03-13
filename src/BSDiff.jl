@@ -260,7 +260,7 @@ end
 load_data(::Type, data_path::AbstractString) =
     read(data_path)
 load_data(::Type{ZSparsePatch}, data_path::AbstractString) =
-    read_zrle(data_path)
+    open(read∘ZRLE, data_path)
 load_data(type::Type, (data_path, index_path)::NTuple{2,AbstractString}) =
     load_data(type, data_path)
 

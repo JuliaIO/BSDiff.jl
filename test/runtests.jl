@@ -10,7 +10,8 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 
 @testset "ZRLE" begin
     function test_zrle(raw::String, enc::String)
-        @test String(BSDiff.zrle(codeunits(raw))) == enc
+        @test read(BSDiff.ZRLE(IOBuffer(raw)), String) == enc
+        @test sprint(io->write(BSDiff.ZRLE(io), enc)) == raw
     end
     test_zrle("", "")
     test_zrle("xyz", "xyz")
