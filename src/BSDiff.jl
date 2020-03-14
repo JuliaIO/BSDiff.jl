@@ -199,6 +199,7 @@ function bsdiff_core(
     patch_file::AbstractString,
     patch_io::IO,
 )
+    @show length(old_data), length(new_data)
     try
         write(patch_io, format_magic(format))
         patch = write_start(format, patch_io, old_data, new_data)
@@ -268,8 +269,11 @@ end
 
 load_data(::Type, data_path::AbstractString) =
     read(data_path)
-load_data(::Type{ZSparsePatch}, data_path::AbstractString) =
-    open(read∘ZRLE, data_path)
+function load_data(::Type{ZSparsePatch}, data_path::AbstractString)
+    t = @timed read_zrle(data_path)
+    @show t.time
+    return t.value
+end
 load_data(type::Type, (data_path, index_path)::NTuple{2,AbstractString}) =
     load_data(type, data_path)
 
