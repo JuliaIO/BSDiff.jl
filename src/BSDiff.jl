@@ -15,6 +15,7 @@ abstract type Patch end
 include("classic.jl")
 include("endsley.jl")
 include("sparse.jl")
+include("zrle.jl")
 
 # format names, patch types, auto detection
 
