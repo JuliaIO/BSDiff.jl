@@ -79,13 +79,14 @@ end
         old_data = read(old)
         new_data = read(new)
         @testset "hi-level API" for format in FORMATS
+            @show format
             index = bsindex(old, format = format)
             patch = @time bsdiff((old, index), new, format = format)
             patch = @time bsdiff((old, index), new, format = format)
             patch = @time bsdiff((old, index), new, format = format)
+            @show filesize(patch)
             new′ = bspatch(old, patch)
             @test read(new) == read(new′)
-            @show format, filesize(patch)
             for (compress, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
                 run(`$compress -qk9 $patch`)
                 @show compress, filesize("$patch.$ext")

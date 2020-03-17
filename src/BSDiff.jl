@@ -5,6 +5,7 @@ export bsdiff, bspatch, bsindex
 using SuffixArrays
 using TranscodingStreams, CodecBzip2
 using TranscodingStreams: Codec
+using BufferedStreams
 
 # abstract Patch format type
 # specific formats defined below
@@ -151,7 +152,7 @@ function bspatch(
         new, new_io = mktemp()
         bspatch_core(
             type,
-            load_data(type, old),
+            old_data,
             new,
             save_data(type, new_io),
             patch_io,
@@ -199,11 +200,11 @@ function bsdiff_core(
     patch_file::AbstractString,
     patch_io::IO,
 )
-    @show length(old_data), length(new_data)
+    patch_io = BufferedOutputStream(patch_io)
     try
         write(patch_io, format_magic(format))
         patch = write_start(format, patch_io, old_data, new_data)
-        generate_patch(patch, old_data, new_data, index)
+        @time generate_patch(patch, old_data, new_data, index)
         close(patch)
     catch
         close(patch_io)
@@ -221,6 +222,8 @@ function bspatch_core(
     new_io::IO,
     patch_io::IO,
 )
+    new_io = BufferedOutputStream(new_io)
+    patch_io = BufferedInputStream(patch_io)
     try
         MAGIC = format_magic(format)
         magic = String(read(patch_io, ncodeunits(MAGIC)))
@@ -269,16 +272,13 @@ end
 
 load_data(::Type, data_path::AbstractString) =
     read(data_path)
-function load_data(::Type{ZSparsePatch}, data_path::AbstractString)
-    t = @timed read_zrle(data_path)
-    @show t.time
-    return t.value
-end
+load_data(::Type{ZSparsePatch}, data_path::AbstractString) =
+    read_zrle(data_path)
 load_data(type::Type, (data_path, index_path)::NTuple{2,AbstractString}) =
     load_data(type, data_path)
 
 save_data(::Type, io::IO) = io
-save_data(::Type{ZSparsePatch}, io::IO) = ZRLE(io)
+save_data(::Type{ZSparsePatch}, io::IO) = ZRLE(BufferedOutputStream(io))
 
 load_index(data_path::AbstractString, data::AbstractVector{<:UInt8}) =
     generate_index(data)
