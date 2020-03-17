@@ -80,13 +80,17 @@ function bsdiff(
 )
     type = patch_type(format)
     old_data = load_data(type, old)
-    bsdiff_core(
-        type,
-        old_data,
-        load_index(old, old_data),
-        load_data(type, new),
-        patch, open(patch, write=true),
-    )
+    patch_data = sprint() do patch_io
+        bsdiff_core(
+            type,
+            old_data,
+            load_index(old, old_data),
+            load_data(type, new),
+            patch, patch_io,
+        )
+    end
+    write(patch, patch_data)
+    return patch
 end
 
 function bsdiff(
@@ -96,13 +100,18 @@ function bsdiff(
 )
     type = patch_type(format)
     old_data = load_data(type, old)
-    bsdiff_core(
-        type,
-        old_data,
-        load_index(old, old_data),
-        load_data(type, new),
-        mktemp()...,
-    )
+    patch = tempname()
+    patch_data = sprint() do patch_io
+        bsdiff_core(
+            type,
+            old_data,
+            load_index(old, old_data),
+            load_data(type, new),
+            patch, patch_io,
+        )
+    end
+    write(patch, patch_data)
+    return patch
 end
 
 """
@@ -126,29 +135,10 @@ function bspatch(
     patch::AbstractString;
     format::Symbol = :auto,
 )
-    open(patch) do patch_io
-        format == :auto && (format = detect_format(patch_io, true))
-        type = patch_type(format)
-        bspatch_core(
-            type,
-            load_data(type, old),
-            new,
-            save_data(type, open(new, write=true)),
-            patch_io,
-        )
-    end
-end
-
-function bspatch(
-    old::AbstractString,
-    patch::AbstractString;
-    format::Symbol = :auto,
-)
-    open(patch) do patch_io
-        format == :auto && (format = detect_format(patch_io, true))
-        type = patch_type(format)
-        old_data = load_data(type, old)
-        new, new_io = mktemp()
+    patch_io = IOBuffer(read(patch))
+    format == :auto && (format = detect_format(patch_io, true))
+    type = patch_type(format)
+    new_data = sprint() do new_io
         bspatch_core(
             type,
             load_data(type, old),
@@ -157,6 +147,31 @@ function bspatch(
             patch_io,
         )
     end
+    write(new, new_data)
+    return new
+end
+
+function bspatch(
+    old::AbstractString,
+    patch::AbstractString;
+    format::Symbol = :auto,
+)
+    patch_io = IOBuffer(read(patch))
+    format == :auto && (format = detect_format(patch_io, true))
+    type = patch_type(format)
+    old_data = load_data(type, old)
+    new = tempname()
+    new_data = sprint() do new_io
+        bspatch_core(
+            type,
+            old_data,
+            new,
+            save_data(type, new_io),
+            patch_io,
+        )
+    end
+    write(new, new_data)
+    return new
 end
 
 """
