@@ -56,20 +56,20 @@ function Base.write(io::ZRLE, byte::UInt8)
 end
 
 function read_zrle(path::AbstractString)
-    data = read(path)
-    file = IOBuffer(data)
-    buf = IOBuffer(sizehint = length(data))
-    while !eof(file)
-        byte = read(file, UInt8)
-        write(buf, byte)
-        if byte == 0
-            n = UInt64(0)
-            while byte == 0 && !eof(file)
-                byte = read(file, UInt8)
-                n += byte == 0
+    buf = IOBuffer(sizehint = filesize(path))
+    open(path) do file
+        while !eof(file)
+            byte = read(file, UInt8)
+            write(buf, byte)
+            if byte == 0
+                n = UInt64(0)
+                while byte == 0 && !eof(file)
+                    byte = read(file, UInt8)
+                    n += byte == 0
+                end
+                write_leb128(buf, n)
+                byte ≠ 0 && write(buf, byte)
             end
-            write_leb128(buf, n)
-            byte ≠ 0 && write(buf, byte)
         end
     end
     return take!(buf)
