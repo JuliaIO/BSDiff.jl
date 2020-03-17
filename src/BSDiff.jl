@@ -5,6 +5,7 @@ export bsdiff, bspatch, bsindex
 using SuffixArrays
 using TranscodingStreams, CodecBzip2
 using TranscodingStreams: Codec
+using BufferedStreams
 
 # abstract Patch format type
 # specific formats defined below
@@ -179,10 +180,11 @@ function bsdiff_core(
     patch_file::AbstractString,
     patch_io::IO,
 )
+    patch_io = BufferedOutputStream(patch_io)
     try
         write(patch_io, format_magic(format))
         patch = write_start(format, patch_io, old_data, new_data)
-        generate_patch(patch, old_data, new_data, index)
+        @time generate_patch(patch, old_data, new_data, index)
         close(patch)
     catch
         close(patch_io)
@@ -200,6 +202,8 @@ function bspatch_core(
     new_io::IO,
     patch_io::IO,
 )
+    new_io = BufferedOutputStream(new_io)
+    patch_io = BufferedInputStream(patch_io)
     try
         MAGIC = format_magic(format)
         magic = String(read(patch_io, ncodeunits(MAGIC)))

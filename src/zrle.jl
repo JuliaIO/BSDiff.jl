@@ -58,6 +58,7 @@ end
 function read_zrle(path::AbstractString)
     buf = IOBuffer(sizehint = filesize(path))
     open(path) do file
+        file = BufferedInputStream(file)
         while !eof(file)
             byte = read(file, UInt8)
             write(buf, byte)

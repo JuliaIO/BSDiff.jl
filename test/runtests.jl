@@ -74,7 +74,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
             old_zrl_data = read(old_zrl)
             new_zrl_data = read(new_zrl)
             index_data = BSDiff.generate_index(old_zrl_data)
-            for PatchType in [BSDiff.EndsleyPatch, BSDiff.SparsePatch]
+            for PatchType in [BSDiff.ClassicPatch, BSDiff.EndsleyPatch, BSDiff.SparsePatch]
                 println("$PatchType generation to devnull:")
                 patch = PatchType(devnull, length(new_zrl_data))
                 @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
@@ -96,7 +96,12 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
             patch = @time bsdiff((old, index), new, format = format)
             patch = @time bsdiff((old, index), new, format = format)
             new′ = bspatch(old, patch)
+            @test read(new) == read(new′)
             @show filesize(patch)
+            for (compress, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
+                run(`$compress -qk9 $patch`)
+                @show compress, filesize("$patch.$ext")
+            end
         end
         @testset "low-level API" begin
             # test that diff is identical to reference diff
