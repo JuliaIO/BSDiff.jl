@@ -184,7 +184,7 @@ function bsdiff_core(
     try
         write(patch_io, format_magic(format))
         patch = write_start(format, patch_io, old_data, new_data)
-        @time generate_patch(patch, old_data, new_data, index)
+        generate_patch(patch, old_data, new_data, index)
         close(patch)
     catch
         close(patch_io)

@@ -57,6 +57,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
         old_data = read(old)
         new_data = read(new)
         @testset "zrl data" begin
+            println("[ ZRL data ]")
             old_zrl = "$old.zrl"
             new_zrl = "$new.zrl"
             write(old_zrl, BSDiff.read_zrle(old))
@@ -70,25 +71,26 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
                 new_zrl′ = bspatch(old_zrl, patch)
                 @test read(new_zrl) == read(new_zrl′)
             end
-            # eliminate I/O overhead
-            old_zrl_data = read(old_zrl)
-            new_zrl_data = read(new_zrl)
-            index_data = BSDiff.generate_index(old_zrl_data)
-            for PatchType in [BSDiff.ClassicPatch, BSDiff.EndsleyPatch, BSDiff.SparsePatch]
-                println("$PatchType generation to devnull:")
-                patch = PatchType(devnull, length(new_zrl_data))
-                @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
-                @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
-                @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
-                println("$PatchType generation to IOBuffer:")
-                diff = sprint() do io
-                    patch = PatchType(io, length(new_zrl_data))
-                    @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
-                    @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
-                    @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
-                end |> codeunits
-            end
+            # # eliminate I/O overhead
+            # old_zrl_data = read(old_zrl)
+            # new_zrl_data = read(new_zrl)
+            # index_data = BSDiff.generate_index(old_zrl_data)
+            # for PatchType in [BSDiff.ClassicPatch, BSDiff.EndsleyPatch, BSDiff.SparsePatch]
+            #     println("$PatchType generation to devnull:")
+            #     patch = PatchType(devnull, length(new_zrl_data))
+            #     @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
+            #     @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
+            #     @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
+            #     println("$PatchType generation to IOBuffer:")
+            #     diff = sprint() do io
+            #         patch = PatchType(io, length(new_zrl_data))
+            #         @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
+            #         @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
+            #         @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
+            #     end |> codeunits
+            # end
         end
+        println("[ non-ZRL data ]")
         @testset "hi-level API" for format in FORMATS
             @show format
             index = bsindex(old)
