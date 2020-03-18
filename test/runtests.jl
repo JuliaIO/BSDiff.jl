@@ -56,6 +56,21 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
         ref = joinpath(registry_data, "reference.diff")
         old_data = read(old)
         new_data = read(new)
+        println("[ non-ZRL data ]")
+        @testset "hi-level API" for format in FORMATS
+            @show format
+            index = bsindex(old)
+            patch = @time bsdiff((old, index), new, format = format)
+            patch = @time bsdiff((old, index), new, format = format)
+            patch = @time bsdiff((old, index), new, format = format)
+            new′ = bspatch(old, patch)
+            @test read(new) == read(new′)
+            @show filesize(patch)
+            for (cmd, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
+                run(`$cmd -qk9 $patch`)
+                @show cmd, filesize("$patch.$ext")
+            end
+        end
         @testset "zrl data" begin
             println("[ ZRL data ]")
             old_zrl = "$old.zrl"
@@ -94,21 +109,6 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
             #         @time BSDiff.generate_patch(patch, old_zrl_data, new_zrl_data, index_data)
             #     end |> codeunits
             # end
-        end
-        println("[ non-ZRL data ]")
-        @testset "hi-level API" for format in FORMATS
-            @show format
-            index = bsindex(old)
-            patch = @time bsdiff((old, index), new, format = format)
-            patch = @time bsdiff((old, index), new, format = format)
-            patch = @time bsdiff((old, index), new, format = format)
-            new′ = bspatch(old, patch)
-            @test read(new) == read(new′)
-            @show filesize(patch)
-            for (cmd, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
-                run(`$cmd -qk9 $patch`)
-                @show cmd, filesize("$patch.$ext")
-            end
         end
         @testset "low-level API" begin
             # test that diff is identical to reference diff
