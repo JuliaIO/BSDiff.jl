@@ -70,6 +70,11 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
                 patch = @time bsdiff((old_zrl, index), new_zrl, format = format)
                 new_zrl′ = bspatch(old_zrl, patch)
                 @test read(new_zrl) == read(new_zrl′)
+                @show filesize(patch)
+                for (cmd, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
+                    run(`$cmd -qk9 $patch`)
+                    @show cmd, filesize("$patch.$ext")
+                end
             end
             # # eliminate I/O overhead
             # old_zrl_data = read(old_zrl)
@@ -100,9 +105,9 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
             new′ = bspatch(old, patch)
             @test read(new) == read(new′)
             @show filesize(patch)
-            for (compress, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
-                run(`$compress -qk9 $patch`)
-                @show compress, filesize("$patch.$ext")
+            for (cmd, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
+                run(`$cmd -qk9 $patch`)
+                @show cmd, filesize("$patch.$ext")
             end
         end
         @testset "low-level API" begin
