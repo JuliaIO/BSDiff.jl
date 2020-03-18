@@ -5,6 +5,7 @@ export bsdiff, bspatch, bsindex
 using SuffixArrays
 using TranscodingStreams, CodecBzip2
 using TranscodingStreams: Codec
+using BufferedStreams
 
 # abstract Patch format type
 # specific formats defined below
@@ -197,6 +198,7 @@ function bspatch_core(
     new_io::IO,
     patch_io::IO,
 )
+    new_io = BufferedOutputStream(new_io)
     try
         MAGIC = format_magic(format)
         magic = String(read(patch_io, ncodeunits(MAGIC)))
