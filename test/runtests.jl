@@ -6,6 +6,7 @@ import bsdiff_classic_jll
 import bsdiff_endsley_jll
 
 const test_data = artifact"test_data"
+const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 
 @testset "BSDiff" begin
     @testset "API coverage" begin
@@ -55,6 +56,15 @@ const test_data = artifact"test_data"
         ref = joinpath(registry_data, "reference.diff")
         old_data = read(old)
         new_data = read(new)
+        @testset "hi-level API" for format in FORMATS
+            @show format
+            index = bsindex(old)
+            patch = @time bsdiff((old, index), new, format = format)
+            patch = @time bsdiff((old, index), new, format = format)
+            patch = @time bsdiff((old, index), new, format = format)
+            new′ = bspatch(old, patch)
+            @show filesize(patch)
+        end
         @testset "low-level API" begin
             # test that diff is identical to reference diff
             diff = sprint() do io
