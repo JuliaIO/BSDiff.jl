@@ -67,7 +67,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
             @test read(new) == read(new′)
             @show filesize(patch)
             for (cmd, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
-                run(`$cmd -qk9 $patch`)
+                @time run(`$cmd -qk9 $patch`)
                 @show cmd, filesize("$patch.$ext")
             end
         end
@@ -87,7 +87,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
                 @test read(new_zrl) == read(new_zrl′)
                 @show filesize(patch)
                 for (cmd, ext) in [("zstd", "zst"), ("bzip2", "bz2"), ("xz", "xz")]
-                    run(`$cmd -qk9 $patch`)
+                    @time run(`$cmd -qk9 $patch`)
                     @show cmd, filesize("$patch.$ext")
                 end
             end
