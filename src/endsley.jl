@@ -14,7 +14,7 @@ function write_start(
     codec::Codec = Bzip2Compressor(),
 )
     new_size = length(new_data)
-    write(patch_io, int_io(Int64(new_size)))
+    write_int(patch_io, new_size)
     EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
 end
 
@@ -23,7 +23,7 @@ function read_start(
     patch_io::IO;
     codec::Codec = Bzip2Decompressor(),
 )
-    new_size = int_io(read(patch_io, Int64))
+    new_size = read_int(patch_io)
     EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
 end
 
@@ -35,16 +35,16 @@ function encode_control(
     copy_size::Int,
     skip_size::Int,
 )
-    write(patch.io, int_io(Int64(diff_size)))
-    write(patch.io, int_io(Int64(copy_size)))
-    write(patch.io, int_io(Int64(skip_size)))
+    write_int(patch.io, diff_size)
+    write_int(patch.io, copy_size)
+    write_int(patch.io, skip_size)
 end
 
 function decode_control(patch::EndsleyPatch)
     eof(patch.io) && return nothing
-    diff_size = Int(int_io(read(patch.io, Int64)))
-    copy_size = Int(int_io(read(patch.io, Int64)))
-    skip_size = Int(int_io(read(patch.io, Int64)))
+    diff_size = read_int(patch.io)
+    copy_size = read_int(patch.io)
+    skip_size = read_int(patch.io)
     return diff_size, copy_size, skip_size
 end
 

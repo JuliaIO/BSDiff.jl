@@ -271,6 +271,8 @@ generate_index(data::AbstractVector{<:UInt8}) = suffixsort(data, 0)
 # transform used to serialize integers to avoid lots of
 # high bytes being emitted for small negative values
 int_io(x::Signed) = ifelse(x == abs(x), x, typemin(x) - x)
+write_int(io::IO, x::Signed) = write(io, int_io(Int64(x)))
+read_int(io::IO) = Int(int_io(read(io, Int64)))
 
 """
 Return lexicographic order and length of common prefix.

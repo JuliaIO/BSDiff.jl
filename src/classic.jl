@@ -33,9 +33,9 @@ function read_start(
     patch_io::IO;
     codec::Codec = Bzip2Decompressor(),
 )
-    ctrl_size = int_io(read(patch_io, Int64))
-    diff_size = int_io(read(patch_io, Int64))
-    new_size  = int_io(read(patch_io, Int64))
+    ctrl_size = read_int(patch_io)
+    diff_size = read_int(patch_io)
+    new_size  = read_int(patch_io)
     ctrl_io = IOBuffer(read(patch_io, ctrl_size))
     diff_io = IOBuffer(read(patch_io, diff_size))
     data_io = IOBuffer(read(patch_io))
@@ -50,9 +50,9 @@ function Base.close(patch::ClassicPatch)
         for stream in (patch.ctrl, patch.diff, patch.data)
             write(stream, TranscodingStreams.TOKEN_END)
         end
-        write(patch.io, int_io(Int64(patch.ctrl.stream.size)))
-        write(patch.io, int_io(Int64(patch.diff.stream.size)))
-        write(patch.io, int_io(Int64(patch.new_size)))
+        write_int(patch.io, patch.ctrl.stream.size)
+        write_int(patch.io, patch.diff.stream.size)
+        write_int(patch.io, patch.new_size)
         for stream in (patch.ctrl, patch.diff, patch.data)
             write(patch.io, resize!(stream.stream.data, stream.stream.size))
         end
@@ -66,16 +66,16 @@ function encode_control(
     copy_size::Int,
     skip_size::Int,
 )
-    write(patch.ctrl, int_io(Int64(diff_size)))
-    write(patch.ctrl, int_io(Int64(copy_size)))
-    write(patch.ctrl, int_io(Int64(skip_size)))
+    write_int(patch.ctrl, diff_size)
+    write_int(patch.ctrl, copy_size)
+    write_int(patch.ctrl, skip_size)
 end
 
 function decode_control(patch::ClassicPatch)
     eof(patch.ctrl) && return nothing
-    diff_size = Int(int_io(read(patch.ctrl, Int64)))
-    copy_size = Int(int_io(read(patch.ctrl, Int64)))
-    skip_size = Int(int_io(read(patch.ctrl, Int64)))
+    diff_size = read_int(patch.ctrl)
+    copy_size = read_int(patch.ctrl)
+    skip_size = read_int(patch.ctrl)
     return diff_size, copy_size, skip_size
 end
 
