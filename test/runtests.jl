@@ -4,6 +4,7 @@ using Pkg.Artifacts
 
 import bsdiff_classic_jll
 import bsdiff_endsley_jll
+import zrl_jll
 
 const test_data = artifact"test_data"
 const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
@@ -56,14 +57,35 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
         ref = joinpath(registry_data, "reference.diff")
         old_data = read(old)
         new_data = read(new)
-        @testset "hi-level API" for format in FORMATS
+        @testset "hi-level API (w/ timing)" for format in FORMATS
+            println("[ raw data ]")
             @show format
             index = bsindex(old)
             patch = @time bsdiff((old, index), new, format = format)
             patch = @time bsdiff((old, index), new, format = format)
             patch = @time bsdiff((old, index), new, format = format)
             new′ = bspatch(old, patch)
+            @test read(new) == read(new′)
             @show filesize(patch)
+        end
+        @testset "ZRL data (w/timing)" for format in FORMATS
+            println("[ ZRL data ]")
+            @show format
+            old_zrl = tempname()
+            new_zrl = tempname()
+            zrl_jll.zrle() do zrle
+                run(pipeline(`$zrle $old`, old_zrl))
+                run(pipeline(`$zrle $new`, new_zrl))
+            end
+            index = bsindex(old_zrl)
+            patch = @time bsdiff((old_zrl, index), new_zrl, format = format)
+            patch = @time bsdiff((old_zrl, index), new_zrl, format = format)
+            patch = @time bsdiff((old_zrl, index), new_zrl, format = format)
+            new_zrl′ = bspatch(old_zrl, patch)
+            @test read(new_zrl) == read(new_zrl′)
+            @show filesize(patch)
+            rm(old_zrl)
+            rm(new_zrl)
         end
         @testset "low-level API" begin
             # test that diff is identical to reference diff
