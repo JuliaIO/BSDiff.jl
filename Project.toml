@@ -21,6 +21,7 @@ Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 bsdiff_classic_jll = "7424abe3-9926-5da8-9b28-863d6330819c"
 bsdiff_endsley_jll = "4b92dbe6-3cad-5173-b451-9946eb17ce71"
+zrl_jll = "9fe51eb0-a099-5680-98c2-fe494cf0c162"
 
 [targets]
-test = ["Pkg", "Test", "bsdiff_classic_jll", "bsdiff_endsley_jll"]
+test = ["Pkg", "Test", "bsdiff_classic_jll", "bsdiff_endsley_jll", "zrl_jll"]
