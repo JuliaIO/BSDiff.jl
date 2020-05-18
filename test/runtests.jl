@@ -11,6 +11,17 @@ println("LOWMEM: ", get(ENV, "JULIA_BSDIFF_LOWMEM", "false"))
 const test_data = artifact"test_data"
 const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 
+readers(file) = [
+    f -> f(file),
+    f -> open(f, file),
+    f -> open(f, `cat $file`),
+]
+writers(file) = [
+    f -> f(file),
+    f -> open(f, file, write=true),
+    f -> open(f, pipeline(`cat`, file), write=true),
+]
+
 @testset "BSDiff" begin
     @testset "API coverage" begin
         # create new, old and reference patch files
@@ -24,30 +35,68 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
             fmt = format == nothing ? [] : [:format => format]
             # check API passing only two paths
             @testset "2-arg API" begin
-                patch_file = bsdiff(old_file, new_file; fmt...)
-                new_file′ = bspatch(old_file, patch_file; fmt...)
-                @test read(new_file′, String) == "Hello, world!"
-                new_file′ = bspatch(old_file, patch_file) # format auto-detected
-                @test read(new_file′, String) == "Hello, world!"
+                for old in readers(old_file),
+                    new in readers(new_file)
+                    patch_file = old() do old; new() do new
+                    bsdiff(old, new; fmt...)
+                    end; end
+                    for patch in readers(patch_file)
+                        new_file′ = old() do old; patch() do patch
+                        bspatch(old, patch; fmt...)
+                        end; end
+                        @test read(new_file′, String) == "Hello, world!"
+                        new_file′ = old() do old; patch() do patch
+                        bspatch(old, patch) # format auto-detected
+                        end; end
+                        @test read(new_file′, String) == "Hello, world!"
+                    end
+                end
             end
             # check API passing all three paths
             @testset "3-arg API" begin
                 patch_file = joinpath(dir, "patch")
                 new_file′ = joinpath(dir, "new′")
-                bsdiff(old_file, new_file, patch_file; fmt...)
-                bspatch(old_file, new_file′, patch_file; fmt...)
-                @test read(new_file′, String) == "Hello, world!"
-                bspatch(old_file, new_file′, patch_file) # format auto-detected
-                @test read(new_file′, String) == "Hello, world!"
+                for old in readers(old_file),
+                    new in readers(new_file),
+                    patch in writers(patch_file)
+                    old() do old; new() do new; patch() do patch
+                        bsdiff(old, new, patch; fmt...)
+                    end; end; end
+                    for new′ in writers(new_file′),
+                        patch in readers(patch_file)
+                        old() do old; new′() do new′; patch() do patch
+                            bspatch(old, new′, patch; fmt...)
+                        end; end; end
+                        @test read(new_file′, String) == "Hello, world!"
+                        old() do old; new′() do new′; patch() do patch
+                            bspatch(old, new′, patch) # format auto-detected
+                        end; end; end
+                        @test read(new_file′, String) == "Hello, world!"
+                    end
+                end
             end
             @testset "bsindex API" begin
-                bsindex(old_file, index_file)
-                patch_file = bsdiff((old_file, index_file), new_file; fmt...)
-                new_file′ = bspatch(old_file, patch_file; fmt...)
-                @test read(new_file′, String) == "Hello, world!"
-                # test that tempfile API makes the same file
-                index_file′ = bsindex(old_file)
-                @test read(index_file) == read(index_file′)
+                for old in readers(old_file),
+                    index in writers(index_file)
+                    old() do old; index() do index
+                        bsindex(old, index)
+                    end; end
+                    for index in readers(index_file),
+                        new in readers(new_file)
+                        patch_file = old() do old; index() do index; new() do new
+                        bsdiff((old, index), new; fmt...)
+                        end; end; end
+                        new_file′ = old() do old
+                        bspatch(old, patch_file; fmt...)
+                        end
+                        @test read(new_file′, String) == "Hello, world!"
+                    end
+                    # test that 1-arg API makes the same file
+                    index_file′ = old() do old
+                    bsindex(old)
+                    end
+                    @test read(index_file) == read(index_file′)
+                end
             end
         end
         rm(dir, recursive=true, force=true)
