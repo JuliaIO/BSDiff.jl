@@ -15,7 +15,7 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
         dir = mktempdir()
         old_file = joinpath(dir, "old")
         new_file = joinpath(dir, "new")
-        suffix_file = joinpath(dir, "suffixes")
+        index_file = joinpath(dir, "index")
         write(old_file, "Goodbye, world.")
         write(new_file, "Hello, world!")
         for format in (nothing, :classic, :endsley)
@@ -39,13 +39,13 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
                 @test read(new_file′, String) == "Hello, world!"
             end
             @testset "bsindex API" begin
-                bsindex(old_file, suffix_file)
-                patch_file = bsdiff((old_file, suffix_file), new_file; fmt...)
+                bsindex(old_file, index_file)
+                patch_file = bsdiff((old_file, index_file), new_file; fmt...)
                 new_file′ = bspatch(old_file, patch_file; fmt...)
                 @test read(new_file′, String) == "Hello, world!"
                 # test that tempfile API makes the same file
-                suffix_file′ = bsindex(old_file)
-                @test read(suffix_file) == read(suffix_file′)
+                index_file′ = bsindex(old_file)
+                @test read(index_file) == read(index_file′)
             end
         end
         rm(dir, recursive=true, force=true)
