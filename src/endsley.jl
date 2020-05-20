@@ -27,7 +27,10 @@ function read_start(
     EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
 end
 
-Base.close(patch::EndsleyPatch) = close(patch.io)
+function write_finish(patch::EndsleyPatch)
+    write(patch.io, TranscodingStreams.TOKEN_END)
+    flush(patch.io)
+end
 
 function encode_control(
     patch::EndsleyPatch,
