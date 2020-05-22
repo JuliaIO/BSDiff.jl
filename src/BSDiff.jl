@@ -19,10 +19,19 @@ include("endsley.jl")
 # format names, patch types, auto detection
 
 const DEFAULT_FORMAT = :classic
-const FORMATS = Dict(
-    :classic => ClassicPatch,
-    :endsley => EndsleyPatch,
-)
+const FORMATS = Dict{Symbol,Type{<:Patch}}()
+const MAGICS = Vector{Pair{Symbol,String}}()
+
+function register_format!(format::Symbol, type::Type{<:Patch})
+    magic = format_magic(type)
+    FORMATS[format] = type
+    push!(MAGICS, format => magic)
+    sort!(MAGICS, by = ncodeunits∘last)
+    return
+end
+
+register_format!(:classic, ClassicPatch)
+register_format!(:endsley, EndsleyPatch)
 
 function patch_type(format::Symbol)
     type = get(FORMATS, format, nothing)
@@ -30,28 +39,47 @@ function patch_type(format::Symbol)
     throw(ArgumentError("unknown patch format: $format"))
 end
 
-function format_name(type::Type{<:Patch})
-    for (format, type′) in FORMATS
-        type == type′ && return format
+function detect_format(patch_io::IO)
+    data = UInt8[]
+    for (format, magic) in MAGICS
+        n = ncodeunits(magic)
+        m = n - length(data)
+        m > 0 && append!(data, read(patch_io, m))
+        view(data, 1:n) == codeunits(magic) && return format
     end
-    throw(ArgumentError("unknown patch type: $type"))
-end
-
-function detect_format(patch_io::IO, raise::Bool=false)
-    for (format, type) in FORMATS
-        mark(patch_io)
-        MAGIC = format_magic(type)
-        magic = String(read(patch_io, ncodeunits(MAGIC)))
-        reset(patch_io)
-        magic == MAGIC && return format
-    end
-    raise ? error("unrecognized patch format") : :unknown
+    return :unknown
 end
 detect_format(path::AbstractString) = open(detect_format, path)
 
+const INDEX_HEADER = "SUFFIX ARRAY\0"
+
+## some API utilities for arguments ##
+
+open_read(f::Function, file::AbstractString) = open(f, file)
+
+function open_write(f::Function, file::AbstractString)
+    try open(f, file, write=true)
+    catch
+        rm(file, force=true)
+        rethrow()
+    end
+    return file
+end
+function open_write(f::Function, file::Nothing)
+    file, io = mktemp()
+    try f(io)
+    catch
+        close(io)
+        rm(file, force=true)
+        rethrow()
+    end
+    close(io)
+    return file
+end
+
 ## high-level API (similar to the C tool) ##
 
-const AbstractStrings = Union{AbstractString,NTuple{2,AbstractString}}
+const AbstractStrings = Union{AbstractString, NTuple{2,AbstractString}}
 
 """
     bsdiff(old, new, [ patch ]; format = [ :classic | :endsley ]) -> patch
@@ -74,28 +102,18 @@ selected by with `bsdiff(old, new; format = :endsley)`.
 function bsdiff(
     old::AbstractStrings,
     new::AbstractString,
-    patch::AbstractString;
+    patch::Union{AbstractString, Nothing} = nothing;
     format::Symbol = DEFAULT_FORMAT,
 )
-    bsdiff_core(
-        patch_type(format),
-        data_and_index(old)...,
-        read(new),
-        patch, open(patch, write=true),
-    )
-end
-
-function bsdiff(
-    old::AbstractStrings,
-    new::AbstractString;
-    format::Symbol = DEFAULT_FORMAT,
-)
-    bsdiff_core(
-        patch_type(format),
-        data_and_index(old)...,
-        read(new),
-        mktemp()...,
-    )
+    type = patch_type(format)
+    old_data, index = data_and_index(old)
+    new_data = open_read(read, new)
+    open_write(patch) do patch_io
+        write(patch_io, format_magic(type))
+        patch_obj = write_start(type, patch_io, old_data, new_data)
+        generate_patch(patch_obj, old_data, new_data, index)
+        write_finish(patch_obj)
+    end
 end
 
 """
@@ -115,18 +133,25 @@ then it will raise an error unless the patch file has the expected format.
 """
 function bspatch(
     old::AbstractString,
-    new::AbstractString,
+    new::Union{AbstractString, Nothing},
     patch::AbstractString;
     format::Symbol = :auto,
 )
-    open(patch) do patch_io
-        format == :auto && (format = detect_format(patch_io, true))
-        bspatch_core(
-            patch_type(format),
-            read(old),
-            new, open(new, write=true),
-            patch_io,
-        )
+    format == :auto || format in keys(FORMATS) ||
+        error("unknown patch format: $format")
+    old_data = open_read(read, old)
+    open_read(patch) do patch_io
+        detected = detect_format(patch_io)
+        detected == :unknown && error("unrecognized/corrupt patch file")
+        format == :auto || format == detected ||
+            error("patch has $detected format, expected $format format")
+        type = patch_type(detected)
+        patch_obj = read_start(type, patch_io)
+        open_write(new) do new_io
+            new_io = BufferedOutputStream(new_io)
+            apply_patch(patch_obj, old_data, new_io)
+            flush(new_io)
+        end
     end
 end
 
@@ -135,15 +160,7 @@ function bspatch(
     patch::AbstractString;
     format::Symbol = :auto,
 )
-    open(patch) do patch_io
-        format == :auto && (format = detect_format(patch_io, true))
-        bspatch_core(
-            patch_type(format),
-            read(old),
-            mktemp()...,
-            patch_io,
-        )
-    end
+    bspatch(old, nothing, patch; format = format)
 end
 
 """
@@ -155,106 +172,33 @@ index data is saved to a temporary file whose path is returned. The path of the
 index file can be passed to `bsdiff` to speed up the diff computation by passing
 `(old, index)` as the first argument instead of just `old`.
 """
-function bsindex(old::AbstractString, index::AbstractString)
-    bsindex_core(read(old), index, open(index, write=true))
-end
-
-function bsindex(old::AbstractString)
-    bsindex_core(read(old), mktemp()...)
-end
-
-# common code for API entry points
-
-const INDEX_HEADER = "SUFFIX ARRAY\0"
-
-IndexType{T<:Integer} = Vector{T}
-
-function bsdiff_core(
-    format::Type{<:Patch},
-    old_data::AbstractVector{UInt8},
-    index::IndexType,
-    new_data::AbstractVector{UInt8},
-    patch_file::AbstractString,
-    patch_io::IO,
+function bsindex(
+    old::AbstractString,
+    index::Union{AbstractString, Nothing} = nothing,
 )
-    try
-        write(patch_io, format_magic(format))
-        patch = write_start(format, patch_io, old_data, new_data)
-        generate_patch(patch, old_data, new_data, index)
-        close(patch)
-    catch
-        close(patch_io)
-        rm(patch_file, force=true)
-        rethrow()
-    end
-    close(patch_io)
-    return patch_file
-end
-
-function bspatch_core(
-    format::Type{<:Patch},
-    old_data::AbstractVector{UInt8},
-    new_file::AbstractString,
-    new_io::IO,
-    patch_io::IO,
-)
-    new_io = BufferedOutputStream(new_io)
-    try
-        MAGIC = format_magic(format)
-        magic = String(read(patch_io, ncodeunits(MAGIC)))
-        if magic ≠ MAGIC
-            fmt = format_name(format)
-            if applicable(seekstart, patch_io)
-                seekstart(patch_io)
-                detected = detect_format(patch_io)
-                detected ≠ :unknown &&
-                    error("patch has $detected format, expected $fmt format")
-            end
-            error("corrupt $fmt patch, wrong magic: $magic")
-        end
-        patch = read_start(format, patch_io)
-        apply_patch(patch, old_data, new_io)
-        close(patch)
-    catch
-        close(new_io)
-        rm(new_file, force=true)
-        rethrow()
-    end
-    close(new_io)
-    return new_file
-end
-
-function bsindex_core(
-    old_data::AbstractVector{UInt8},
-    index_path::AbstractString,
-    index_io::IO,
-)
-    try
+    old_data = open_read(read, old)
+    open_write(index) do index_io
         write(index_io, INDEX_HEADER)
-        index = generate_index(old_data)
-        write(index_io, UInt8(sizeof(eltype(index))))
-        write(index_io, index)
-    catch
-        close(index_io)
-        rm(index_path, force=true)
-        rethrow()
+        index_data = generate_index(old_data)
+        write(index_io, UInt8(sizeof(eltype(index_data))))
+        write(index_io, index_data)
     end
-    close(index_io)
-    return index_path
 end
 
 ## loading data and index ##
 
+const IndexType{T<:Integer} = Vector{T}
+
 function data_and_index(data_path::AbstractString)
-    data = read(data_path)
+    data = open_read(read, data_path)
     data, generate_index(data)
 end
 
 function data_and_index((data_path, index_path)::NTuple{2,AbstractString})
-    data = read(data_path)
-    index = open(index_path) do index_io
+    data = open_read(read, data_path)
+    index = open_read(index_path) do index_io
         hdr = String(read(index_io, ncodeunits(INDEX_HEADER)))
-        hdr == INDEX_HEADER || error("corrupt bsdiff index")
+        hdr == INDEX_HEADER || error("corrupt bsdiff index file")
         unit = Int(read(index_io, UInt8))
         T = unit == 1 ? UInt8 :
             unit == 2 ? UInt16 :
@@ -295,7 +239,7 @@ Search for the longest prefix of new[t:end] in old.
 Uses the suffix array of old to search efficiently.
 """
 function prefix_search(
-    index::IndexType, # suffix & lcp data
+    index::IndexType, # suffix array
     old::AbstractVector{UInt8}, # old data to search in
     new::AbstractVector{UInt8}, # new data to search for
     t::Int, # search for longest match of new[t:end]

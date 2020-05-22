@@ -45,19 +45,17 @@ function read_start(
     ClassicPatch(patch_io, new_size, ctrl, diff, data)
 end
 
-function Base.close(patch::ClassicPatch)
-    if iswritable(patch.ctrl.stream)
-        for stream in (patch.ctrl, patch.diff, patch.data)
-            write(stream, TranscodingStreams.TOKEN_END)
-        end
-        write_int(patch.io, patch.ctrl.stream.size)
-        write_int(patch.io, patch.diff.stream.size)
-        write_int(patch.io, patch.new_size)
-        for stream in (patch.ctrl, patch.diff, patch.data)
-            write(patch.io, resize!(stream.stream.data, stream.stream.size))
-        end
+function write_finish(patch::ClassicPatch)
+    for stream in (patch.ctrl, patch.diff, patch.data)
+        write(stream, TranscodingStreams.TOKEN_END)
     end
-    close(patch.io)
+    write_int(patch.io, patch.ctrl.stream.size)
+    write_int(patch.io, patch.diff.stream.size)
+    write_int(patch.io, patch.new_size)
+    for stream in (patch.ctrl, patch.diff, patch.data)
+        write(patch.io, resize!(stream.stream.data, stream.stream.size))
+    end
+    flush(patch.io)
 end
 
 function encode_control(
