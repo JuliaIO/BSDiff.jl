@@ -11,20 +11,20 @@ function write_start(
     patch_io::IO,
     old_data::AbstractVector{UInt8},
     new_data::AbstractVector{UInt8};
-    codec::Codec = Bzip2Compressor(),
+    codec = Bzip2Compressor,
 )
     new_size = length(new_data)
     write_int(patch_io, new_size)
-    EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
+    EndsleyPatch(TranscodingStream(codec(), patch_io), new_size)
 end
 
 function read_start(
     ::Type{EndsleyPatch},
     patch_io::IO;
-    codec::Codec = Bzip2Decompressor(),
+    codec = Bzip2Decompressor,
 )
     new_size = read_int(patch_io)
-    EndsleyPatch(TranscodingStream(codec, patch_io), new_size)
+    EndsleyPatch(TranscodingStream(codec(), patch_io), new_size)
 end
 
 function write_finish(patch::EndsleyPatch)
