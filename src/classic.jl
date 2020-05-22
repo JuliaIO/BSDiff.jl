@@ -5,14 +5,10 @@ struct ClassicPatch{T<:IO,C<:Codec} <: Patch
     diff::TranscodingStream{C,IOBuffer}
     data::TranscodingStream{C,IOBuffer}
 end
-function ClassicPatch(
-    patch_io::IO,
-    new_size::Int64 = typemax(Int64);
-    codec = Bzip2Compressor,
-)
-    ctrl = TranscodingStream(codec(), IOBuffer())
-    diff = TranscodingStream(codec(), IOBuffer())
-    data = TranscodingStream(codec(), IOBuffer())
+function ClassicPatch(patch_io::IO, new_size::Int64 = typemax(Int64))
+    ctrl = TranscodingStream(compressor(), IOBuffer())
+    diff = TranscodingStream(compressor(), IOBuffer())
+    data = TranscodingStream(compressor(), IOBuffer())
     ClassicPatch(patch_io, new_size, ctrl, diff, data)
 end
 
@@ -22,26 +18,21 @@ function write_start(
     ::Type{ClassicPatch},
     patch_io::IO,
     old_data::AbstractVector{UInt8},
-    new_data::AbstractVector{UInt8};
-    codec = Bzip2Compressor,
+    new_data::AbstractVector{UInt8},
 )
-    ClassicPatch(patch_io, length(new_data), codec = codec)
+    ClassicPatch(patch_io, length(new_data))
 end
 
-function read_start(
-    ::Type{ClassicPatch},
-    patch_io::IO;
-    codec = Bzip2Decompressor,
-)
+function read_start(::Type{ClassicPatch}, patch_io::IO)
     ctrl_size = read_int(patch_io)
     diff_size = read_int(patch_io)
     new_size  = read_int(patch_io)
     ctrl_io = IOBuffer(read(patch_io, ctrl_size))
     diff_io = IOBuffer(read(patch_io, diff_size))
     data_io = IOBuffer(read(patch_io))
-    ctrl = TranscodingStream(codec(), ctrl_io)
-    diff = TranscodingStream(codec(), diff_io)
-    data = TranscodingStream(codec(), data_io)
+    ctrl = TranscodingStream(decompressor(), ctrl_io)
+    diff = TranscodingStream(decompressor(), diff_io)
+    data = TranscodingStream(decompressor(), data_io)
     ClassicPatch(patch_io, new_size, ctrl, diff, data)
 end
 

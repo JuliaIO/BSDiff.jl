@@ -13,6 +13,9 @@ abstract type Patch end
 
 # specific format implementations
 
+compressor() = Bzip2Compressor()
+decompressor() = Bzip2Decompressor()
+
 include("classic.jl")
 include("endsley.jl")
 
