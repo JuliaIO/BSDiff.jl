@@ -11,10 +11,20 @@ using BufferedStreams
 # specific formats defined below
 abstract type Patch end
 
-# specific format implementations
+# control over compression details
 
-compressor() = Bzip2Compressor(blocksize100k=9)
-decompressor() = Bzip2Decompressor()
+function lowmem()
+    haskey(ENV, "JULIA_BSDIFF_LOWMEM") || return false
+    val = lowercase(ENV["JULIA_BSDIFF_LOWMEM"])
+    val in ("1", "true", "t", "yes", "y") && return true
+    val in ("0", "false", "f", "no", "n") && return false
+    error("invalid value for JULIA_BSDIFF_LOWMEM: $(repr(val))")
+end
+
+compressor() = Bzip2Compressor(blocksize100k = lowmem() ? 1 : 9)
+decompressor() = Bzip2Decompressor(small = lowmem())
+
+# specific format implementations
 
 include("classic.jl")
 include("endsley.jl")
