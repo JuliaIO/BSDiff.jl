@@ -107,7 +107,7 @@ provided, the patch data is written to a temporary file whose path is returned.
 The `old` argument can also be a 2-tuple of strings and/or IO handles, in which
 case the first is used as the old data and the second is used as a precomputed
 index of the old data, as computed by [`bsindex`](@ref). Since indexing the old
-data is the slowest part of generating a diff, pre-computing this and reusing it
+data is the slowest part of generating a diff, precomputing this and reusing it
 can significantly speed up generting diffs from the same old file to multiple
 different new files.
 
