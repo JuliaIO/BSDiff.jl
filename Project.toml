@@ -1,7 +1,7 @@
 name = "BSDiff"
 uuid = "7b188ff4-8bb6-4dee-bbe1-9b6fdde2c7c5"
 authors = ["Stefan Karpinski <stefan@karpinski.org>"]
-version = "1.0.1"
+version = "1.1.0"
 
 [deps]
 BufferedStreams = "e1450e63-4bb3-523b-b2a4-4ffa8c0fd77d"
