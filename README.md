@@ -63,8 +63,8 @@ format can be selected by with `bsdiff(old, new, patch, format = :endsley)`.
 bspatch(old, [ new, ] patch; format = [ :classic | :endsley ]) -> new
 ```
 Apply a binary patch given by the `patch` argument to the content of `old` to
-producing the content of `new`. All arguments can be strings or IO handles. If
-no `new` argument is passed, the new data is written to a temporary file whose
+produce the content of `new`. All arguments can be strings or IO handles. If no
+`new` argument is provided, the new data is written to a temporary file whose
 path is returned.
 
 Note that the optional argument is the middle argument, which is a bit unusual
@@ -81,10 +81,10 @@ given then it will raise an error unless the patch file has the expected format.
 bsindex(old, [ index ]) -> index
 ```
 Save index data (a sorted suffix array) for the content of `old` into `index`.
-All arguments can be strings or IO handles. If no `index` argument is given, the
-index data is saved to a temporary file whose path is returned. The index can be
-passed to `bsdiff` to speed up the diff computation by passing `(old, index)` as
-the first argument instead of just `old`.
+All arguments can be strings or IO handles. If no `index` argument is provided,
+the index data is saved to a temporary file whose path is returned. The index
+can be passed to `bsdiff` to speed up the diff computation by passing `(old,
+index)` as the first argument instead of just `old`.
 
 <!-- END: copied from inline doc strings -->
 
