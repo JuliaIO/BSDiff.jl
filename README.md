@@ -41,15 +41,15 @@ The public API for the `BSDiff` package consists of the following functions:
 ```julia
 bsdiff(old, new, [ patch ]; format = [ :classic | :endsley ]) -> patch
 ```
-Compute a binary patch that will transform the file `old` into the file `new`.
-All arguments can be strings or IO handles. If no `patch` argument is provided,
-the patch data is written to a temporary file whose path is returned.
+Compute a binary patch that will transform the content of `old` into the content
+of `new`. All arguments can be strings or IO handles. If no `patch` argument is
+provided, the patch data is written to a temporary file whose path is returned.
 
-The `old` argument can also be a 2-tuple of and/or IO handles, in which case the
-first is used as old data and the second is used as a precomputed index of the
-old data, as computed by [`bsindex`](@ref). Since indexing the old data is the
-slowest part of generating a diff, pre-computing this and reusing it can
-significantly speed up generting diffs from the same old file to multiple
+The `old` argument can also be a 2-tuple of strings and/or IO handles, in which
+case the first is used as the old data and the second is used as a precomputed
+index of the old data, as computed by [`bsindex`](@ref). Since indexing the old
+data is the slowest part of generating a diff, pre-computing this and reusing it
+can significantly speed up generting diffs from the same old file to multiple
 different new files.
 
 The `format` keyword argument allows selecting a patch format to generate. The
@@ -62,9 +62,10 @@ format can be selected by with `bsdiff(old, new, patch, format = :endsley)`.
 ```julia
 bspatch(old, [ new, ] patch; format = [ :classic | :endsley ]) -> new
 ```
-Apply a binary patch in file `patch` to the file `old` producing file `new`. All
-arguments can be strings or IO handles. If no `new` argument is passed, the new
-data is written to a temporary file whose path is returned.
+Apply a binary patch given by the `patch` argument to the content of `old` to
+producing the content of `new`. All arguments can be strings or IO handles. If
+no `new` argument is passed, the new data is written to a temporary file whose
+path is returned.
 
 Note that the optional argument is the middle argument, which is a bit unusual
 but makes the argument order when passing all three paths consistent with the
@@ -79,11 +80,11 @@ given then it will raise an error unless the patch file has the expected format.
 ```julia
 bsindex(old, [ index ]) -> index
 ```
-Save index data (a sorted suffix array) for the file `old` into the file
-`index`. All arguments can be strings or IO handles. If no `index` argument is
-given, the index data is saved to a temporary file whose path is returned. The
-index can be passed to `bsdiff` to speed up the diff computation by passing
-`(old, index)` as the first argument instead of just `old`.
+Save index data (a sorted suffix array) for the content of `old` into `index`.
+All arguments can be strings or IO handles. If no `index` argument is given, the
+index data is saved to a temporary file whose path is returned. The index can be
+passed to `bsdiff` to speed up the diff computation by passing `(old, index)` as
+the first argument instead of just `old`.
 
 <!-- END: copied from inline doc strings -->
 
