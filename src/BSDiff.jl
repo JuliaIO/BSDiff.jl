@@ -169,6 +169,7 @@ function bspatch(
         open_write(new) do new_io
             new_io = BufferedOutputStream(new_io)
             apply_patch(patch_obj, old_data, new_io)
+            finalize(patch_obj)
             flush(new_io)
         end
     end
