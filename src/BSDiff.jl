@@ -13,16 +13,8 @@ abstract type Patch end
 
 # control over compression details
 
-function lowmem()
-    haskey(ENV, "JULIA_BSDIFF_LOWMEM") || return false
-    val = lowercase(ENV["JULIA_BSDIFF_LOWMEM"])
-    val in ("1", "true", "t", "yes", "y") && return true
-    val in ("0", "false", "f", "no", "n") && return false
-    error("invalid value for JULIA_BSDIFF_LOWMEM: $(repr(val))")
-end
-
-compressor() = Bzip2Compressor(blocksize100k = lowmem() ? 1 : 9)
-decompressor() = Bzip2Decompressor(small = lowmem())
+compressor() = Bzip2Compressor(blocksize100k=9)
+decompressor() = Bzip2Decompressor()
 
 # specific format implementations
 
