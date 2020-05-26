@@ -1,4 +1,4 @@
-struct EndsleyPatch{T<:IO} <: Patch
+mutable struct EndsleyPatch{T<:IO} <: Patch
     io::T
     new_size::Int64
 end
@@ -14,7 +14,10 @@ function write_start(
 )
     new_size = length(new_data)
     write_int(patch_io, new_size)
-    EndsleyPatch(TranscodingStream(compressor(), patch_io), new_size)
+    stream = TranscodingStream(compressor(), patch_io)
+    patch = EndsleyPatch(stream, new_size)
+    finalizer(finalize_patch, patch)
+    return patch
 end
 
 function read_start(::Type{EndsleyPatch}, patch_io::IO)
@@ -22,9 +25,19 @@ function read_start(::Type{EndsleyPatch}, patch_io::IO)
     EndsleyPatch(TranscodingStream(decompressor(), patch_io), new_size)
 end
 
+function finalize_patch(patch::EndsleyPatch)
+    if patch.io isa TranscodingStream
+        # must be called to avoid leaking memory
+        TranscodingStreams.changemode!(patch.io, :close)
+    end
+end
+
 function write_finish(patch::EndsleyPatch)
-    write(patch.io, TranscodingStreams.TOKEN_END)
+    if patch.io isa TranscodingStream
+        write(patch.io, TranscodingStreams.TOKEN_END)
+    end
     flush(patch.io)
+    finalize(patch)
 end
 
 function encode_control(

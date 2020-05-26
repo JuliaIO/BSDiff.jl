@@ -1,4 +1,4 @@
-struct ClassicPatch{T<:IO,C<:Codec} <: Patch
+mutable struct ClassicPatch{T<:IO,C<:Codec} <: Patch
     io::T
     new_size::Int64
     ctrl::TranscodingStream{C,IOBuffer}
@@ -9,7 +9,9 @@ function ClassicPatch(patch_io::IO, new_size::Int64 = typemax(Int64))
     ctrl = TranscodingStream(compressor(), IOBuffer())
     diff = TranscodingStream(compressor(), IOBuffer())
     data = TranscodingStream(compressor(), IOBuffer())
-    ClassicPatch(patch_io, new_size, ctrl, diff, data)
+    patch = ClassicPatch(patch_io, new_size, ctrl, diff, data)
+    finalizer(finalize_patch, patch)
+    return patch
 end
 
 format_magic(::Type{ClassicPatch}) = "BSDIFF40"
@@ -33,7 +35,16 @@ function read_start(::Type{ClassicPatch}, patch_io::IO)
     ctrl = TranscodingStream(decompressor(), ctrl_io)
     diff = TranscodingStream(decompressor(), diff_io)
     data = TranscodingStream(decompressor(), data_io)
-    ClassicPatch(patch_io, new_size, ctrl, diff, data)
+    patch = ClassicPatch(patch_io, new_size, ctrl, diff, data)
+    finalizer(finalize_patch, patch)
+    return patch
+end
+
+function finalize_patch(patch::ClassicPatch)
+    for stream in (patch.ctrl, patch.diff, patch.data)
+        # must be called to avoid leaking memory
+        TranscodingStreams.changemode!(stream, :close)
+    end
 end
 
 function write_finish(patch::ClassicPatch)
@@ -47,6 +58,7 @@ function write_finish(patch::ClassicPatch)
         write(patch.io, resize!(stream.stream.data, stream.stream.size))
     end
     flush(patch.io)
+    finalize(patch)
 end
 
 function encode_control(
