@@ -4,6 +4,7 @@ authors = ["Stefan Karpinski <stefan@karpinski.org>"]
 version = "1.1.1"
 
 [deps]
+ArgTools = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 BufferedStreams = "e1450e63-4bb3-523b-b2a4-4ffa8c0fd77d"
 CodecBzip2 = "523fee87-0ab8-5b00-afb7-3ecf72e48cfd"
 SuffixArrays = "24f65c1e-0a10-5d3d-8a1f-a83399f3fced"
