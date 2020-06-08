@@ -1,5 +1,6 @@
 using Test
 using BSDiff
+using ArgTools
 using Pkg.Artifacts
 
 import bsdiff_classic_jll
@@ -9,96 +10,110 @@ import zrl_jll
 const test_data = artifact"test_data"
 const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 
-readers(file) = [
-    f -> f(file),
-    f -> open(f, file),
-    f -> open(f, `cat $file`),
-]
-writers(file) = [
-    f -> f(file),
-    f -> open(f, file, write=true),
-    f -> open(f, pipeline(`cat`, file), write=true),
-]
-
 @testset "BSDiff" begin
     @testset "API coverage" begin
-        # create new, old and reference patch files
+        # create new and old files
         dir = mktempdir()
         old_file = joinpath(dir, "old")
         new_file = joinpath(dir, "new")
-        index_file = joinpath(dir, "index")
         write(old_file, "Goodbye, world.")
         write(new_file, "Hello, world!")
+
+        # generate reference index
+        index_file = joinpath(dir, "index")
+        index_file = bsindex(old_file)
+
+        @testset "bsindex" begin
+            arg_readers(old_file) do old
+                index_file′ = @arg_test old bsindex(old)
+                @test read(index_file′) == read(index_file)
+
+                arg_writers() do index_file′, index
+                    @arg_test old index begin
+                        @test index == bsindex(old, index)
+                    end
+                    @test read(index_file′) == read(index_file)
+                end
+            end
+        end
+
         for format in (nothing, :classic, :endsley)
             fmt = format == nothing ? [] : [:format => format]
-            # check API passing only two paths
-            @testset "2-arg API" begin
-                for old in readers(old_file),
-                    new in readers(new_file)
-                    patch_file = old() do old; new() do new
-                    bsdiff(old, new; fmt...)
-                    end; end
-                    for patch in readers(patch_file)
-                        new_file′ = old() do old; patch() do patch
-                        bspatch(old, patch; fmt...)
-                        end; end
-                        @test read(new_file′, String) == "Hello, world!"
-                        new_file′ = old() do old; patch() do patch
-                        bspatch(old, patch) # format auto-detected
-                        end; end
-                        @test read(new_file′, String) == "Hello, world!"
-                    end
-                end
+
+            # generate and test reference patch first
+            patch_file = bsdiff(old_file, new_file; fmt...)
+            @testset "reference patch" begin
+                new_file′ = bspatch(old_file, patch_file; fmt...)
+                @test read(new_file′) == read(new_file)
+                rm(new_file′)
             end
-            # check API passing all three paths
-            @testset "3-arg API" begin
-                patch_file = joinpath(dir, "patch")
-                new_file′ = joinpath(dir, "new′")
-                for old in readers(old_file),
-                    new in readers(new_file),
-                    patch in writers(patch_file)
-                    old() do old; new() do new; patch() do patch
-                        bsdiff(old, new, patch; fmt...)
-                    end; end; end
-                    for new′ in writers(new_file′),
-                        patch in readers(patch_file)
-                        old() do old; new′() do new′; patch() do patch
-                            bspatch(old, new′, patch; fmt...)
-                        end; end; end
-                        @test read(new_file′, String) == "Hello, world!"
-                        old() do old; new′() do new′; patch() do patch
-                            bspatch(old, new′, patch) # format auto-detected
-                        end; end; end
-                        @test read(new_file′, String) == "Hello, world!"
-                    end
-                end
-            end
-            @testset "bsindex API" begin
-                for old in readers(old_file),
-                    index in writers(index_file)
-                    old() do old; index() do index
-                        bsindex(old, index)
-                    end; end
-                    for index in readers(index_file),
-                        new in readers(new_file)
-                        patch_file = old() do old; index() do index; new() do new
-                        bsdiff((old, index), new; fmt...)
-                        end; end; end
-                        new_file′ = old() do old
-                        bspatch(old, patch_file; fmt...)
+
+            @testset "bsdiff" begin
+                arg_readers(old_file) do old
+                    arg_readers(new_file) do new
+                        patch_file′ = @arg_test old new begin
+                            bsdiff(old, new; fmt...)
                         end
-                        @test read(new_file′, String) == "Hello, world!"
+                        @test read(patch_file′) == read(patch_file)
+                        rm(patch_file′)
+
+                        arg_readers(index_file) do index
+                            patch_file′ = @arg_test old index new begin
+                                bsdiff((old, index), new; fmt...)
+                            end
+                            @test read(patch_file′) == read(patch_file)
+                            rm(patch_file′)
+                        end
+
+                        arg_writers() do patch_file′, patch
+                            @arg_test old new patch begin
+                                @test patch == bsdiff(old, new, patch; fmt...)
+                            end
+                            @test read(patch_file′) == read(patch_file)
+                        end
                     end
-                    # test that 1-arg API makes the same file
-                    index_file′ = old() do old
-                    bsindex(old)
+                end
+            end
+
+            @testset "bspatch" begin
+                arg_readers(old_file) do old
+                    arg_readers(patch_file) do patch
+                        # auto-detected format
+                        new_file′ = @arg_test old patch begin
+                            bspatch(old, patch)
+                        end
+                        @test read(new_file′) == read(new_file)
+                        rm(new_file′)
+
+                        arg_writers() do new_file′, new
+                            @arg_test old new patch begin
+                                @test new == bspatch(old, new, patch)
+                            end
+                            @test read(new_file′) == read(new_file)
+                        end
+                        format === nothing &&
+                            return # tests below are the same
+
+                        # explicit format
+                        new_file′ = @arg_test old patch begin
+                            bspatch(old, patch; fmt...) # explicit format
+                        end
+                        @test read(new_file′) == read(new_file)
+                        rm(new_file′)
+
+                        arg_writers() do new_file′, new
+                            @arg_test old new patch begin
+                                @test new == bspatch(old, new, patch; fmt...)
+                            end
+                            @test read(new_file′) == read(new_file)
+                        end
                     end
-                    @test read(index_file) == read(index_file′)
                 end
             end
         end
         rm(dir, recursive=true, force=true)
     end
+
     @testset "registry data" begin
         registry_data = joinpath(test_data, "registry")
         old = joinpath(registry_data, "before.tar")
@@ -117,6 +132,7 @@ writers(file) = [
             @test read(new) == read(new′)
             @show filesize(patch)
         end
+
         @testset "ZRL data (w/timing)" for format in FORMATS
             println("[ ZRL data ]")
             @show format
@@ -136,6 +152,7 @@ writers(file) = [
             rm(old_zrl)
             rm(new_zrl)
         end
+
         @testset "low-level API" begin
             # test that diff is identical to reference diff
             index = BSDiff.generate_index(old_data)
@@ -153,6 +170,7 @@ writers(file) = [
             end
             @test new_data == new_data′
         end
+
         if !Sys.iswindows() # bsdiff JLLs don't compile on Windows
             for (format, jll) in [
                     (:classic, bsdiff_classic_jll),
