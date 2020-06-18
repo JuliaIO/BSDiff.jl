@@ -93,6 +93,30 @@ different new files.
 
 <!-- END: copied from inline doc strings -->
 
+## Usage Example
+
+```julia
+julia> cd(mktempdir())
+
+julia> open("goodbye.txt", write=true) do io
+           println(io, "Goodbye, world.")
+       end
+
+julia> open("hello.txt", write=true) do io
+           println(io, "Hello, world!")
+       end
+
+julia> using BSDiff
+
+julia> patch = bsdiff("goodbye.txt", "hello.txt");
+
+julia> bspatch("goodbye.txt", "hello_copy.txt", patch)
+"hello_copy.txt"
+
+julia> read(ans, String)
+"Hello, world!\n"
+```
+
 ## Reproducibility
 
 Even though this package produces patch files that are compatible with the
