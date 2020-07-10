@@ -2,6 +2,6 @@
 git-tree-sha1 = "d2ca0cfa36769774a442b467b353dcf908186384"
 lazy = true
 
-	[[test_data.download]]
-	url = "https://github.com/JuliaIO/BSDiffTestData/releases/download/v2.0/BSDiffTestData.tar.gz"
-	sha256 = "4120e56274bb4ef760b40fda03889ecb0af97d4412a5b3a67d3088fffdd124f8"
+    [[test_data.download]]
+    url = "https://github.com/JuliaIO/BSDiffTestData/releases/download/v2.0/BSDiffTestData.tar.gz"
+    sha256 = "4120e56274bb4ef760b40fda03889ecb0af97d4412a5b3a67d3088fffdd124f8"
