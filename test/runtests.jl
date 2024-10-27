@@ -7,6 +7,9 @@ import bsdiff_classic_jll
 import bsdiff_endsley_jll
 import zrl_jll
 
+using Aqua: Aqua
+Aqua.test_all(BSDiff)
+
 const test_data = artifact"test_data"
 const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
 
