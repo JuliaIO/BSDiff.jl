@@ -1,4 +1,5 @@
 [deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 ArgTools = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 BSDiff = "7b188ff4-8bb6-4dee-bbe1-9b6fdde2c7c5"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
