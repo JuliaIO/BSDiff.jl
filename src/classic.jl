@@ -22,12 +22,12 @@ function write_start(
     old_data::AbstractVector{UInt8},
     new_data::AbstractVector{UInt8},
 )
-    ClassicPatch(patch_io, length(new_data))
+    ClassicPatch(patch_io, Int64(length(new_data)))
 end
 
 function read_start(::Type{ClassicPatch}, patch_io::IO)
-    ctrl_size = read_int(patch_io)
-    diff_size = read_int(patch_io)
+    ctrl_size = Int(read_int(patch_io))
+    diff_size = Int(read_int(patch_io))
     new_size  = read_int(patch_io)
     ctrl_io = IOBuffer(read(patch_io, ctrl_size))
     diff_io = IOBuffer(read(patch_io, diff_size))
@@ -63,9 +63,9 @@ end
 
 function encode_control(
     patch::ClassicPatch,
-    diff_size::Int,
-    copy_size::Int,
-    skip_size::Int,
+    diff_size::Int64,
+    copy_size::Int64,
+    skip_size::Int64,
 )
     write_int(patch.ctrl, diff_size)
     write_int(patch.ctrl, copy_size)
@@ -82,9 +82,9 @@ end
 
 function encode_diff(
     patch::ClassicPatch,
-    diff_size::Int,
-    new::AbstractVector{UInt8}, new_pos::Int,
-    old::AbstractVector{UInt8}, old_pos::Int,
+    diff_size::Int64,
+    new::AbstractVector{UInt8}, new_pos::Int64,
+    old::AbstractVector{UInt8}, old_pos::Int64,
 )
     for i = 1:diff_size
         write(patch.diff, new[new_pos + i] - old[old_pos + i])
@@ -93,10 +93,10 @@ end
 
 function decode_diff(
     patch::ClassicPatch,
-    diff_size::Int,
+    diff_size::Int64,
     new::IO,
     old::AbstractVector{UInt8},
-    old_pos::Int,
+    old_pos::Int64,
 )
     for i = 1:diff_size
         write(new, old[old_pos + i] + read(patch.diff, UInt8))
@@ -105,8 +105,8 @@ end
 
 function encode_data(
     patch::ClassicPatch,
-    copy_size::Int,
-    new::AbstractVector{UInt8}, pos::Int,
+    copy_size::Int64,
+    new::AbstractVector{UInt8}, pos::Int64,
 )
     for i = 1:copy_size
         write(patch.data, new[pos + i])
@@ -115,7 +115,7 @@ end
 
 function decode_data(
     patch::ClassicPatch,
-    copy_size::Int,
+    copy_size::Int64,
     new::IO,
 )
     for i = 1:copy_size

@@ -12,7 +12,7 @@ function write_start(
     old_data::AbstractVector{UInt8},
     new_data::AbstractVector{UInt8},
 )
-    new_size = length(new_data)
+    new_size = Int64(length(new_data))
     write_int(patch_io, new_size)
     stream = TranscodingStream(compressor(), patch_io)
     patch = EndsleyPatch(stream, new_size)
@@ -42,9 +42,9 @@ end
 
 function encode_control(
     patch::EndsleyPatch,
-    diff_size::Int,
-    copy_size::Int,
-    skip_size::Int,
+    diff_size::Int64,
+    copy_size::Int64,
+    skip_size::Int64,
 )
     write_int(patch.io, diff_size)
     write_int(patch.io, copy_size)
@@ -61,9 +61,9 @@ end
 
 function encode_diff(
     patch::EndsleyPatch,
-    diff_size::Int,
-    new::AbstractVector{UInt8}, new_pos::Int,
-    old::AbstractVector{UInt8}, old_pos::Int,
+    diff_size::Int64,
+    new::AbstractVector{UInt8}, new_pos::Int64,
+    old::AbstractVector{UInt8}, old_pos::Int64,
 )
     for i = 1:diff_size
         write(patch.io, new[new_pos + i] - old[old_pos + i])
@@ -72,10 +72,10 @@ end
 
 function decode_diff(
     patch::EndsleyPatch,
-    diff_size::Int,
+    diff_size::Int64,
     new::IO,
     old::AbstractVector{UInt8},
-    old_pos::Int,
+    old_pos::Int64,
 )
     for i = 1:diff_size
         write(new, old[old_pos + i] + read(patch.io, UInt8))
@@ -84,8 +84,8 @@ end
 
 function encode_data(
     patch::EndsleyPatch,
-    copy_size::Int,
-    new::AbstractVector{UInt8}, pos::Int,
+    copy_size::Int64,
+    new::AbstractVector{UInt8}, pos::Int64,
 )
     for i = 1:copy_size
         write(patch.io, new[pos + i])
@@ -94,7 +94,7 @@ end
 
 function decode_data(
     patch::EndsleyPatch,
-    copy_size::Int,
+    copy_size::Int64,
     new::IO,
 )
     for i = 1:copy_size

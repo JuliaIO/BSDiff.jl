@@ -160,13 +160,13 @@ const FORMATS = sort!(collect(keys(BSDiff.FORMATS)))
             # test that diff is identical to reference diff
             index = BSDiff.generate_index(old_data)
             diff = sprint() do io
-                patch = BSDiff.EndsleyPatch(io, length(new_data))
+                patch = BSDiff.EndsleyPatch(io, Int64(length(new_data)))
                 BSDiff.generate_patch(patch, old_data, new_data, index)
             end |> codeunits
             @test read(ref) == diff
             # test that applying reference patch to old produces new
             new_data′ = open(ref) do io
-                patch = BSDiff.EndsleyPatch(io, length(new_data))
+                patch = BSDiff.EndsleyPatch(io, Int64(length(new_data)))
                 sprint() do new_io
                     BSDiff.apply_patch(patch, old_data, new_io)
                 end |> codeunits

@@ -207,14 +207,14 @@ generate_index(data::AbstractVector{<:UInt8}) = suffixsort(data, 0)
 # transform used to serialize integers to avoid lots of
 # high bytes being emitted for small negative values
 int_io(x::Signed) = ifelse(x == abs(x), x, typemin(x) - x)
-write_int(io::IO, x::Signed) = write(io, int_io(Int64(x)))
-read_int(io::IO) = Int(int_io(read(io, Int64)))
+write_int(io::IO, x::Signed) = write(io, htol(int_io(Int64(x))))
+read_int(io::IO) = int_io(ltoh(read(io, Int64)))
 
 """
 Return lexicographic order and length of common prefix.
 """
-function strcmplen(p::Ptr{UInt8}, m::Int, q::Ptr{UInt8}, n::Int)
-    i = 0
+function strcmplen(p::Ptr{UInt8}, m::Int64, q::Ptr{UInt8}, n::Int64)
+    i = Int64(0)
     while i < min(m, n)
         a = unsafe_load(p + i)
         b = unsafe_load(q + i)
@@ -232,18 +232,18 @@ function prefix_search(
     index::IndexType, # suffix array
     old::AbstractVector{UInt8}, # old data to search in
     new::AbstractVector{UInt8}, # new data to search for
-    t::Int, # search for longest match of new[t:end]
+    t::Int64, # search for longest match of new[t:end]
 )
-    old_n = length(old)
-    new_n = length(new) - t + 1
+    old_n = Int64(length(old))
+    new_n = Int64(length(new)) - t + 1
     old_p = pointer(old)
     new_p = pointer(new, t)
     # invariant: longest match is in index[lo:hi]
-    lo, hi = 1, old_n
-    c = lo_c = hi_c = 0
+    lo, hi = Int64(1), old_n
+    c = lo_c = hi_c = Int64(0)
     while hi - lo ≥ 2
         m = (lo + hi) >>> 1
-        s = index[m]
+        s = Int64(index[m])
         x, l = strcmplen(new_p+c, new_n+c, old_p+s+c, old_n-s-c)
         if 0 < x
             lo, lo_c = m, c+l
@@ -252,7 +252,7 @@ function prefix_search(
         end
         c = min(lo_c, hi_c)
     end
-    lo_c > hi_c ? (index[lo]+1, lo_c) : (index[hi]+1, hi_c)
+    lo_c > hi_c ? (Int64(index[lo])+1, lo_c) : (Int64(index[hi])+1, hi_c)
 end
 
 """
@@ -265,11 +265,11 @@ function generate_patch(
     new::AbstractVector{UInt8},
     index::IndexType = generate_index(old),
 )
-    oldsize, newsize = length(old), length(new)
-    scan = len = pos = lastscan = lastpos = lastoffset = 0
+    oldsize, newsize = Int64(length(old)), Int64(length(new))
+    scan = len = pos = lastscan = lastpos = lastoffset = Int64(0)
 
     while scan < newsize
-        oldscore = 0
+        oldscore = Int64(0)
         scsc = scan += len
         while scan < newsize
             pos, len = prefix_search(index, old, new, scan+1)
@@ -287,7 +287,7 @@ function generate_patch(
             scan += 1
         end
         if len ≠ oldscore || scan == newsize
-            i = s = Sf = lenf = 0
+            i = s = Sf = lenf = Int64(0)
             while lastscan + i < scan && lastpos + i < oldsize
                 s += old[lastpos + i + 1] == new[lastscan + i + 1]
                 i += 1
@@ -296,10 +296,10 @@ function generate_patch(
                     lenf = i
                 end
             end
-            lenb = 0
+            lenb = Int64(0)
             if scan < newsize
-                s = Sb = 0
-                i = 1
+                s = Sb = Int64(0)
+                i = Int64(1)
                 while scan ≥ lastscan + i && pos ≥ i
                     s += old[pos - i + 1] == new[scan - i + 1]
                     if 2s - i > 2Sb - lenb
@@ -311,7 +311,7 @@ function generate_patch(
             end
             if lastscan + lenf > scan - lenb
                 overlap = (lastscan + lenf) - (scan - lenb)
-                i = s = Ss = lens = 0
+                i = s = Ss = lens = Int64(0)
                 while i < overlap
                     s += new[lastscan + lenf - overlap + i + 1] ==
                          old[lastpos + lenf - overlap + i + 1]
@@ -352,10 +352,10 @@ function apply_patch(
     patch::Patch,
     old::AbstractVector{UInt8},
     new::IO,
-    new_size::Int = hasfield(typeof(patch), :new_size) ? patch.new_size : typemax(Int),
+    new_size::Int64 = hasfield(typeof(patch), :new_size) ? patch.new_size : typemax(Int64),
 )
-    old_pos = new_pos = 0
-    old_size = length(old)
+    old_pos = new_pos = Int64(0)
+    old_size = Int64(length(old))
     while true
         ctrl = decode_control(patch)
         ctrl == nothing && break
