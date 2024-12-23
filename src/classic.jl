@@ -10,7 +10,6 @@ function ClassicPatch(patch_io::IO, new_size::Int64 = typemax(Int64))
     diff = TranscodingStream(compressor(), IOBuffer())
     data = TranscodingStream(compressor(), IOBuffer())
     patch = ClassicPatch(patch_io, new_size, ctrl, diff, data)
-    finalizer(finalize_patch, patch)
     return patch
 end
 
@@ -36,15 +35,7 @@ function read_start(::Type{ClassicPatch}, patch_io::IO)
     diff = TranscodingStream(decompressor(), diff_io)
     data = TranscodingStream(decompressor(), data_io)
     patch = ClassicPatch(patch_io, new_size, ctrl, diff, data)
-    finalizer(finalize_patch, patch)
     return patch
-end
-
-function finalize_patch(patch::ClassicPatch)
-    for stream in (patch.ctrl, patch.diff, patch.data)
-        # must be called to avoid leaking memory
-        TranscodingStreams.changemode!(stream, :close)
-    end
 end
 
 function write_finish(patch::ClassicPatch)
@@ -61,7 +52,7 @@ function write_finish(patch::ClassicPatch)
         write(patch.io, v)
     end
     flush(patch.io)
-    finalize(patch)
+    nothing
 end
 
 function encode_control(
